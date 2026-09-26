@@ -1,0 +1,299 @@
+/* =============================================
+   LawSaaS - Custom Styles
+   ============================================= */
+
+/* === عام === */
+body, p, h1, h2, h3, h4, h5, h6,
+span, div, a, label, input, textarea, select, button, td, th, li {
+    font-family: 'Tajawal', sans-serif;
+}
+/* FontAwesome — يجب أن يحتفظ بخطه */
+.fa, .fas, .far, .fab, .fal, .fad,
+[class^="fa-"], [class*=" fa-"],
+.fa-solid, .fa-regular, .fa-brands {
+    font-family: "Font Awesome 6 Free", "Font Awesome 6 Brands", "FontAwesome" !important;
+    font-style: normal !important;
+    text-rendering: auto !important;
+    -webkit-font-smoothing: antialiased !important;
+}
+
+/* === الشريط الجانبي للإدارة === */
+.admin-sidebar .app-sidebar {
+    background: #1a1f36;
+}
+.admin-sidebar .nav-sidebar .nav-link {
+    color: #a0aec0;
+    border-radius: 8px;
+    margin: 2px 8px;
+    transition: all 0.2s;
+}
+.admin-sidebar .nav-sidebar .nav-link:hover,
+.admin-sidebar .nav-sidebar .nav-link.active {
+    background: #2d6cdf;
+    color: #fff;
+}
+
+/* === الشريط الجانبي للمكتب === */
+.office-sidebar .app-sidebar {
+    background: #0f2040;
+}
+.office-sidebar .nav-sidebar .nav-link {
+    color: #8fa8c8;
+    border-radius: 8px;
+    margin: 2px 8px;
+    transition: all 0.2s;
+}
+.office-sidebar .nav-sidebar .nav-link:hover,
+.office-sidebar .nav-sidebar .nav-link.active {
+    background: #c9a227;
+    color: #fff;
+}
+
+/* === الكروت === */
+.card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    transition: box-shadow 0.2s;
+}
+.card:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,.12);
+}
+.card-header {
+    background: #fff;
+    border-bottom: 1px solid #f0f0f0;
+    border-radius: 12px 12px 0 0 !important;
+    font-weight: 700;
+    padding: 12px 20px;
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 52px;
+}
+/* الزر داخل card-header — حجمه ثابت */
+.card-header .btn,
+.card-header a.btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* === الأزرار === */
+.btn {
+    border-radius: 8px;
+    font-weight: 500;
+}
+.btn-xs {
+    padding: 2px 8px;
+    font-size: 11px;
+    border-radius: 5px;
+}
+
+/* === الجداول === */
+.table th {
+    font-weight: 600;
+    background: #f8fafc;
+    font-size: 13px;
+    padding: 12px 16px;
+    border-bottom: 2px solid #e9ecef;
+}
+.table td {
+    padding: 12px 16px;
+    vertical-align: middle;
+}
+.table-hover tbody tr:hover {
+    background-color: #f8faff;
+}
+
+/* === الشارات === */
+.badge {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+/* === إحصائيات === */
+.stat-card {
+    border-radius: 14px;
+    padding: 20px;
+    color: #fff;
+}
+.stat-icon {
+    width: 54px;
+    height: 54px;
+    font-size: 22px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* === صفحة تسجيل الدخول === */
+.login-wrapper {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0f2040 0%, #1a3a6e 50%, #0f2040 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.login-card {
+    background: #fff;
+    border-radius: 20px;
+    padding: 48px 40px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.3);
+}
+.login-card .form-control {
+    border-radius: 10px;
+    padding: 12px 16px;
+    border: 1.5px solid #e0e0e0;
+    font-size: 15px;
+}
+.login-card .form-control:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+}
+.btn-login {
+    background: linear-gradient(135deg, #1a3a6e, #2563eb);
+    border: none;
+    border-radius: 10px;
+    padding: 13px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    width: 100%;
+    margin-top: 8px;
+    transition: .2s;
+    cursor: pointer;
+}
+.btn-login:hover {
+    opacity: .9;
+    transform: translateY(-1px);
+}
+
+/* === المحتوى الرئيسي === */
+.app-content {
+    background: #f0f4f8;
+}
+.app-content-header {
+    background: #fff;
+    border-bottom: 1px solid #eee;
+}
+
+/* === تنبيهات مخصصة === */
+.alert {
+    border-radius: 10px;
+    border: none;
+}
+
+/* === قائمة المجموعات === */
+.list-group-item {
+    border-color: #f0f0f0;
+}
+
+/* === شريط التقدم === */
+.progress {
+    border-radius: 10px;
+    background: #e9ecef;
+}
+.progress-bar {
+    border-radius: 10px;
+}
+
+/* === النماذج === */
+.form-control, .form-select {
+    border-radius: 8px;
+    border: 1.5px solid #e0e0e0;
+    font-size: 14px;
+}
+.form-control:focus, .form-select:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+}
+.form-label {
+    font-weight: 600;
+    color: #333;
+    font-size: 13px;
+    margin-bottom: 6px;
+}
+
+/* === المودال === */
+.modal-content {
+    border: none;
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.2);
+}
+.modal-header {
+    border-bottom: 1px solid #f0f0f0;
+    padding: 18px 24px;
+}
+.modal-footer {
+    border-top: 1px solid #f0f0f0;
+    padding: 14px 24px;
+}
+.modal-body {
+    padding: 20px 24px;
+}
+
+/* === التبويبات === */
+.nav-tabs .nav-link {
+    color: #666;
+    border-radius: 8px 8px 0 0;
+    font-weight: 500;
+}
+.nav-tabs .nav-link.active {
+    color: #2563eb;
+    border-bottom-color: #fff;
+    font-weight: 700;
+}
+
+/* === Sidebar nav header === */
+.nav-header {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .5px;
+    color: #5a6580;
+    padding: 10px 16px 4px;
+    text-transform: uppercase;
+}
+
+/* === متجاوب === */
+@media (max-width: 576px) {
+    .login-card {
+        padding: 30px 20px;
+        margin: 16px;
+    }
+    .table th, .table td {
+        padding: 8px 10px;
+        font-size: 12px;
+    }
+}
+
+/* === ألوان الأولويات والحالات === */
+.priority-urgent { border-right: 3px solid #dc2626 !important; }
+.priority-high   { border-right: 3px solid #f59e0b !important; }
+.priority-medium { border-right: 3px solid #3b82f6 !important; }
+.priority-low    { border-right: 3px solid #6b7280 !important; }
+
+/* === كارت الباقة === */
+.package-card {
+    border-radius: 16px;
+    overflow: hidden;
+    transition: transform 0.2s;
+}
+.package-card:hover {
+    transform: translateY(-4px);
+}
+
+/* === الأرشيف === */
+.file-icon { font-size: 28px; }
+
+/* === خط فاصل في القائمة الجانبية === */
+.sidebar-divider {
+    border-top: 1px solid rgba(255,255,255,0.1);
+    margin: 8px 16px;
+}

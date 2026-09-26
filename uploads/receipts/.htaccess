@@ -1,0 +1,27 @@
+Options -Indexes
+
+<FilesMatch "\.(php|php3|php4|php5|php7|phtml|phar|pl|py|rb|jsp|asp|aspx|sh|cgi|exe|bat|cmd)$">
+    Order Deny,Allow
+    Deny from All
+</FilesMatch>
+
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+
+<FilesMatch "\.(pdf|jpg|jpeg|png|gif|webp)$">
+    Order Allow,Deny
+    Allow from All
+</FilesMatch>
+
+<FilesMatch "^\.">
+    Order Deny,Allow
+    Deny from All
+</FilesMatch>
+
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+</IfModule>

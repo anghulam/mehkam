@@ -1,0 +1,11 @@
+# منع أي وصول مباشر عبر المتصفح لملفات مجلد config/
+# (ملفات db.php / gdrive_service_account.json / storage_key.php / *.sql)
+# الوصول من داخل PHP عبر require يبقى يعمل طبيعياً.
+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

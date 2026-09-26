@@ -1,0 +1,39 @@
+# ═══════════════════════════════════════════════
+#  LawSaaS — uploads/.htaccess
+#  حماية مجلد الرفع من التنفيذ والتصفح
+# ═══════════════════════════════════════════════
+
+# منع تصفح المجلدات
+Options -Indexes
+
+# منع تنفيذ أي سكريبت
+<FilesMatch "\.(php|php3|php4|php5|php7|phtml|phar|pl|py|rb|jsp|asp|aspx|sh|cgi|exe|bat|cmd)$">
+    Order Deny,Allow
+    Deny from All
+</FilesMatch>
+
+# رفض الـ PHP حتى لو غُيّر الامتداد
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+
+# السماح فقط بالأنواع الآمنة
+<FilesMatch "\.(pdf|doc|docx|xls|xlsx|jpg|jpeg|png|gif|webp|zip|rar|txt|odt|ods)$">
+    Order Allow,Deny
+    Allow from All
+</FilesMatch>
+
+# منع الوصول للملفات المخفية
+<FilesMatch "^\.">
+    Order Deny,Allow
+    Deny from All
+</FilesMatch>
+
+# إضافة header أمان
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set Content-Disposition "attachment"
+</IfModule>
