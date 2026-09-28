@@ -103,17 +103,5 @@ $_fwa=sc($conn,'whatsapp','');
     });
   });
 })();
-var _yr=false;
-function toggleBilling(){
-  _yr=!_yr;
-  var mo=document.getElementById('lbl-mo'),yr=document.getElementById('lbl-yr');
-  if(mo)mo.classList.toggle('on',!_yr);if(yr)yr.classList.toggle('on',_yr);
-  document.querySelectorAll('.lpa').forEach(function(el){el.textContent=_yr?el.getAttribute('data-y'):el.getAttribute('data-m');});
-  // تحديث روابط التسجيل بدورة الدفع
-  document.querySelectorAll('.lpa-reg').forEach(function(a){
-    var pkg=a.getAttribute('data-pkg');
-    a.href='register.php?package='+pkg+'&billing='+(_yr?'yearly':'monthly');
-  });
-}
 </script>
 </body></html>

@@ -27,7 +27,7 @@ try { $conn->query("ALTER TABLE platform_revenue ADD COLUMN notes TEXT DEFAULT N
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_type']) && $_POST['form_type'] === 'add_revenue') {
     $office_id    = (int)($_POST['office_id'] ?? 0) ?: null;
     $type         = in_array($_POST['type'] ?? '', ['subscription','renewal','upgrade','manual']) ? $_POST['type'] : 'manual';
-    $billing      = ($_POST['billing_period'] ?? '') === 'yearly' ? 'yearly' : 'monthly';
+    $billing      = 'yearly'; // كل اشتراكات المنصة سنوية فقط
     $amount       = (float)($_POST['amount'] ?? 0);
     $payment_date = $conn->real_escape_string($_POST['payment_date'] ?? date('Y-m-d'));
     $notes        = $conn->real_escape_string($_POST['notes'] ?? '');
@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_type']) && $_POS
 
     // تمديد الاشتراك يدوياً
     if ($extend_sub && $office_id) {
-        $months = ($billing === 'yearly') ? 12 : 1;
+        $months = 12;
         $conn->query("UPDATE offices
             SET subscription_end = DATE_ADD(
                 GREATEST(IFNULL(subscription_end, CURDATE()), CURDATE()),
@@ -382,11 +382,10 @@ include '../includes/admin_header.php';
               <option value="">— غير مرتبط بمكتب —</option>
               <?php
               // احضار المكاتب مع تاريخ انتهاء الاشتراك والباقة
-              $offices_full = $conn->query("SELECT o.id, o.name, o.subscription_end, p.price_monthly, p.price_yearly FROM offices o LEFT JOIN packages p ON o.package_id=p.id ORDER BY o.name");
+              $offices_full = $conn->query("SELECT o.id, o.name, o.subscription_end, p.price_yearly FROM offices o LEFT JOIN packages p ON o.package_id=p.id ORDER BY o.name");
               while($ol=$offices_full->fetch_assoc()): ?>
               <option value="<?= $ol['id'] ?>"
                       data-sub="<?= e($ol['subscription_end']??'') ?>"
-                      data-pm="<?= (float)($ol['price_monthly']??0) ?>"
                       data-py="<?= (float)($ol['price_yearly']??0) ?>">
                 <?= e($ol['name']) ?>
               </option>
@@ -394,27 +393,7 @@ include '../includes/admin_header.php';
             </select>
           </div>
 
-          <!-- دورة الفوترة -->
-          <div class="mb-3">
-            <label class="form-label fw-semibold">دورة الفوترة</label>
-            <div class="d-flex gap-2">
-              <label class="flex-fill" style="cursor:pointer">
-                <input type="radio" name="billing_period" value="monthly" id="rev_bill_m" class="d-none" checked>
-                <div class="rev-billing-opt text-center p-2 border rounded-3 selected-billing" id="rev_opt_m">
-                  <i class="fas fa-calendar-day text-primary mb-1 d-block" style="font-size:16px"></i>
-                  <div style="font-size:12px;font-weight:600">شهري</div>
-                </div>
-              </label>
-              <label class="flex-fill" style="cursor:pointer">
-                <input type="radio" name="billing_period" value="yearly" id="rev_bill_y" class="d-none">
-                <div class="rev-billing-opt text-center p-2 border rounded-3" id="rev_opt_y">
-                  <i class="fas fa-calendar-alt text-warning mb-1 d-block" style="font-size:16px"></i>
-                  <div style="font-size:12px;font-weight:600">سنوي</div>
-                  <span style="font-size:10px;background:#fef3c7;color:#92400e;border-radius:4px;padding:0 4px">وفّر 17%</span>
-                </div>
-              </label>
-            </div>
-          </div>
+          <input type="hidden" name="billing_period" value="yearly">
 
           <!-- المبلغ والتاريخ -->
           <div class="row g-3 mb-3">
@@ -487,39 +466,11 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  // تبديل دورة الفوترة
-  function updateBilling() {
-    var isY = document.getElementById('rev_bill_y').checked;
-    document.getElementById('rev_opt_m').classList.toggle('selected-billing', !isY);
-    document.getElementById('rev_opt_y').classList.toggle('selected-billing', isY);
-    // تحديث المبلغ بناء على الباقة المحددة
-    var sel = document.getElementById('rev_office_id');
-    var opt = sel.options[sel.selectedIndex];
-    var pm  = parseFloat(opt.getAttribute('data-pm') || 0);
-    var py  = parseFloat(opt.getAttribute('data-py') || 0);
-    var price = isY ? py : pm;
-    if (price > 0) document.getElementById('rev_amount').value = price;
-    updateSubInfo();
-  }
-
-  document.querySelectorAll('.rev-billing-opt').forEach(function(opt) {
-    opt.addEventListener('click', function() {
-      var radio = opt.parentElement.querySelector('input[type=radio]');
-      if (radio) { radio.checked = true; updateBilling(); }
-    });
-  });
-  document.getElementById('rev_bill_m').addEventListener('change', updateBilling);
-  document.getElementById('rev_bill_y').addEventListener('change', updateBilling);
-
   // عند اختيار مكتب
   document.getElementById('rev_office_id').addEventListener('change', function() {
     var opt = this.options[this.selectedIndex];
-    var sub = opt.getAttribute('data-sub') || '';
-    var pm  = parseFloat(opt.getAttribute('data-pm') || 0);
     var py  = parseFloat(opt.getAttribute('data-py') || 0);
-    var isY = document.getElementById('rev_bill_y').checked;
-    var price = isY ? py : pm;
-    if (price > 0) document.getElementById('rev_amount').value = price;
+    if (py > 0) document.getElementById('rev_amount').value = py;
     var extSec = document.getElementById('extend_section');
     if (this.value) {
       extSec.style.display = '';
@@ -533,13 +484,11 @@ document.addEventListener('DOMContentLoaded', function () {
     var sel = document.getElementById('rev_office_id');
     var opt = sel.options[sel.selectedIndex];
     var sub = opt ? opt.getAttribute('data-sub') : '';
-    var isY = document.getElementById('rev_bill_y').checked;
     var info = document.getElementById('rev_sub_info');
     if (!info) return;
-    var period = isY ? 'سنة' : 'شهر';
     info.textContent = sub
-      ? 'الاشتراك الحالي ينتهي في ' + sub + ' — سيُمدَّد بـ ' + period
-      : 'لا يوجد اشتراك نشط — سيُضاف ' + period + ' من اليوم';
+      ? 'الاشتراك الحالي ينتهي في ' + sub + ' — سيُمدَّد بسنة'
+      : 'لا يوجد اشتراك نشط — سيُضاف سنة من اليوم';
   }
 
 });

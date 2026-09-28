@@ -76,7 +76,7 @@ if (!empty($_GET['q'])) {
     $where .= " AND (o.name LIKE '%$q%' OR o.owner_name LIKE '%$q%' OR o.phone LIKE '%$q%')";
 }
 
-$offices = $conn->query("SELECT o.*,p.name pkg_name,p.price_monthly,
+$offices = $conn->query("SELECT o.*,p.name pkg_name,p.price_yearly,
     (SELECT COUNT(*) FROM users WHERE office_id=o.id) users_count
     FROM offices o LEFT JOIN packages p ON o.package_id=p.id
     WHERE $where ORDER BY o.created_at DESC");
@@ -156,7 +156,7 @@ include '../includes/admin_header.php';
     <div class="table-responsive">
       <table class="table table-hover mb-0">
         <thead><tr>
-          <th>المكتب</th><th>المالك</th><th>الباقة</th><th>الرسوم</th>
+          <th>المكتب</th><th>المالك</th><th>الباقة</th><th>الرسوم السنوية</th>
           <th>المستخدمون</th><th>انتهاء الاشتراك</th><th>الحالة</th><th>إجراءات</th>
         </tr></thead>
         <tbody>
@@ -173,7 +173,7 @@ include '../includes/admin_header.php';
             <div style="font-size:11px;color:#888"><?=e($o['phone']??'')?></div>
           </td>
           <td><span class="badge bg-primary bg-opacity-10 text-primary"><?=e($o['pkg_name']??'—')?></span></td>
-          <td class="fw-semibold"><?=number_format($o['price_monthly']??0)?> <small class="text-muted">ر.س</small></td>
+          <td class="fw-semibold"><?=number_format($o['price_yearly']??0)?> <small class="text-muted">ر.س</small></td>
           <td><span class="badge bg-secondary"><?=$o['users_count']?></span></td>
           <td>
             <?php if($o['subscription_end']): ?>

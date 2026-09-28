@@ -200,7 +200,7 @@ include '../includes/office_header.php';
     <div class="fw-bold mb-1"><?= e($m['name']) ?></div>
     <div class="text-muted flex-grow-1 mb-2" style="font-size:12.5px"><?= e($m['description']) ?></div>
     <?php if (!$enabled && !$pendingReq): ?>
-    <div class="mm-price"><?= $price > 0 ? '<b>'.number_format($price,2).'</b> ر.س/شهرياً' : '<b class="text-success">مجاني</b>' ?></div>
+    <div class="mm-price"><?= $price > 0 ? '<b>'.number_format($price,2).'</b> ر.س/سنة' : '<b class="text-success">مجاني</b>' ?></div>
     <?php endif; ?>
     <div class="mt-auto">
       <?php if ($enabled): ?>
@@ -306,7 +306,7 @@ var _mmDefaultMethod = <?= $pm_on ? "'card'" : ($pp_on ? "'paypal'" : "'bank'") 
 
 function mmOpenPurchase(key, price, name) {
   _mmCurrent = {key:key, price:price, name:name};
-  document.getElementById('mmPurchaseTitle').textContent = name + ' — ' + price.toFixed(2) + ' ر.س/شهرياً';
+  document.getElementById('mmPurchaseTitle').textContent = name + ' — ' + price.toFixed(2) + ' ر.س/سنة';
   <?php if ($bk_on): ?>document.getElementById('mmBankKey').value = key;<?php endif; ?>
   document.getElementById('mmPurchaseModal').style.display = 'flex';
   mmSelectMethod(_mmDefaultMethod);

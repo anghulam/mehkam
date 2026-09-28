@@ -14,7 +14,7 @@ try {
 } catch (\Throwable $e) {}
 
 $pkgs = [];
-$res  = $conn->query("SELECT * FROM packages WHERE is_active=1 ORDER BY price_monthly ASC");
+$res  = $conn->query("SELECT * FROM packages WHERE is_active=1 ORDER BY price_yearly ASC");
 if ($res) while ($p = $res->fetch_assoc()) $pkgs[] = $p;
 
 // أسعار الميزات للباقة المخصصة
@@ -34,15 +34,6 @@ require_once '../includes/module_helper.php';
 custom_pkg_inject_modules($conn, $fp, $feat_keys);
 $cap_keys  = ['per_user','per_100_cases'];
 $custom_pkg_enabled = sc($conn,'custom_package_enabled','1') === '1';
-
-// حساب نسبة الخصم السنوي الإجمالية (لشارة toggle)
-$_top_discount = 0;
-foreach ($pkgs as $_p) {
-    if ($_p['price_monthly'] > 0 && $_p['price_yearly'] > 0) {
-        $_d = round((1 - (float)$_p['price_yearly'] / ((float)$_p['price_monthly'] * 12)) * 100);
-        if ($_d > $_top_discount) $_top_discount = $_d;
-    }
-}
 
 include 'includes/header.php';
 ?>
@@ -72,16 +63,6 @@ include 'includes/header.php';
     </div>
     <?php else: ?>
 
-    <!-- Billing Toggle -->
-    <div class="text-center mb-5">
-      <div class="lx-billing">
-        <div class="lx-billing-opt on" id="lbl-mo" onclick="toggleBilling()">شهري</div>
-        <div class="lx-billing-opt" id="lbl-yr" onclick="toggleBilling()">
-          سنوي <?php if ($_top_discount > 0): ?><span class="lx-save">وفّر <?= $_top_discount ?>%</span><?php endif; ?>
-        </div>
-      </div>
-    </div>
-
     <!-- Packages Grid -->
     <div class="row g-4 justify-content-center mb-5">
       <?php
@@ -93,11 +74,7 @@ include 'includes/header.php';
       foreach ($pkgs as $i => $p):
         $featured   = ($i == 1);
         $features   = array_filter(array_map('trim', explode(',', $p['features'] ?? '')));
-        $mo         = (int) $p['price_monthly'];
-        $yr         = (int) round($p['price_yearly'] / 12);
-        $discount   = ($mo > 0 && $p['price_yearly'] > 0)
-                      ? max(0, round((1 - (float)$p['price_yearly'] / ($mo * 12)) * 100))
-                      : 0;
+        $yr         = (int) $p['price_yearly'];
         $btn_cls    = $btn_classes[$i] ?? 'lx-pbtn-out';
         $pkg_bg     = $pkg_bgs[$i]    ?? '#334155';
         $pkg_icon   = $pkg_icons[$i]  ?? 'box';
@@ -116,20 +93,16 @@ include 'includes/header.php';
               </div>
               <div class="lx-pname"><?= e($p['name']) ?></div>
             </div>
-            <?php if ($mo == 0): ?>
+            <?php if ($yr == 0): ?>
             <div class="lx-pprice">
               <span class="lx-pamount" style="font-size:22px">بالتفاهم</span>
             </div>
             <div class="lx-pyearly">سعر مخصص حسب الاحتياج</div>
             <?php else: ?>
             <div class="lx-pprice">
-              <span class="lx-pamount lpa" data-m="<?= $mo ?>" data-y="<?= $yr ?>"><?= $mo ?></span>
+              <span class="lx-pamount"><?= number_format($yr) ?></span>
               <span class="lx-pcur">ر.س</span>
-              <span class="lx-pper">/ شهر</span>
-            </div>
-            <div class="lx-pyearly">
-              أو <?= number_format($p['price_yearly']) ?> ر.س سنوياً
-              <?php if ($discount > 0): ?><span class="save">وفّر <?= $discount ?>%</span><?php endif; ?>
+              <span class="lx-pper">/ سنة</span>
             </div>
             <?php endif; ?>
           </div>
@@ -152,12 +125,12 @@ include 'includes/header.php';
                 <?= e($feat) ?>
               </li>
               <?php endforeach; ?>
-              <?php if ($mo > 0): ?>
+              <?php if ($yr > 0): ?>
               <li><div class="lx-pcheck">✓</div>تجربة مجانية 14 يوم</li>
               <?php endif; ?>
             </ul>
 
-            <?php if ($mo == 0): ?>
+            <?php if ($yr == 0): ?>
             <a href="register.php?package=<?= (int)$p['id'] ?>" class="lx-pbtn <?= $btn_cls ?>">
               <i class="fas fa-headset me-1"></i>اطلب عرض سعر
             </a>
@@ -165,7 +138,7 @@ include 'includes/header.php';
               سيتواصل معك فريقنا لتحديد السعر
             </p>
             <?php else: ?>
-            <a href="register.php?package=<?= (int)$p['id'] ?>&billing=monthly" class="lx-pbtn <?= $btn_cls ?> lpa-reg" data-pkg="<?= (int)$p['id'] ?>">
+            <a href="register.php?package=<?= (int)$p['id'] ?>&billing=yearly" class="lx-pbtn <?= $btn_cls ?>">
               ابدأ التجربة المجانية
             </a>
             <p class="text-center mt-3 mb-0" style="font-size:12px;color:var(--t3)">
@@ -205,9 +178,9 @@ include 'includes/header.php';
             <div style="font-size:13px;color:rgba(255,255,255,.75);margin-top:4px">اختر الميزات والسعة — السعر يتحدث فوراً</div>
           </div>
           <div style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:12px;padding:12px 20px;text-align:center;min-width:140px">
-            <div style="font-size:11px;color:rgba(255,255,255,.8);margin-bottom:2px">السعر الشهري المقدر</div>
+            <div style="font-size:11px;color:rgba(255,255,255,.8);margin-bottom:2px">السعر السنوي المقدر</div>
             <div style="font-size:30px;font-weight:900;color:#fff;line-height:1" id="pub_price_display">0</div>
-            <div style="font-size:11px;color:rgba(255,255,255,.7)">ر.س / شهر</div>
+            <div style="font-size:11px;color:rgba(255,255,255,.7)">ر.س / سنة</div>
           </div>
         </div>
 
@@ -223,14 +196,14 @@ include 'includes/header.php';
               <?php $mod_head_done = false; foreach ($feat_keys as $fk):
                 if (!isset($fp[$fk])) continue;
                 $f = $fp[$fk];
-                $pm = (float)$f['price_monthly'];
+                $pm = (float)$f['price_yearly'];
                 if (!$mod_head_done && strpos($fk, 'mod_') === 0):
                   $mod_head_done = true;
               ?>
               <div class="col-12"><div style="font-size:13px;font-weight:700;color:#4c1d95;margin:10px 0 2px"><i class="fas fa-puzzle-piece me-2"></i>موديولات إضافية</div></div>
               <?php endif; ?>
               <div class="col-sm-6">
-                <label class="pub-feat-lbl" data-pm="<?= $pm ?>" data-key="<?= $fk ?>"
+                <label class="pub-feat-lbl" data-py="<?= $pm ?>" data-key="<?= $fk ?>"
                        style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:1.5px solid #e5e7eb;cursor:pointer;transition:.15s;background:#fff">
                   <input type="checkbox" class="pub-feat-chk" data-key="<?= $fk ?>"
                          style="width:16px;height:16px;accent-color:#7c3aed;flex-shrink:0;cursor:pointer"
@@ -239,7 +212,7 @@ include 'includes/header.php';
                   <div style="flex:1;min-width:0">
                     <div style="font-size:13px;font-weight:600;color:#1f2937"><?= e($f['feature_label']) ?></div>
                     <?php if ($pm > 0): ?>
-                    <div style="font-size:11px;color:#7c3aed;font-weight:600">+<?= number_format($pm,0) ?> ر.س/شهر</div>
+                    <div style="font-size:11px;color:#7c3aed;font-weight:600">+<?= number_format($pm,0) ?> ر.س/سنة</div>
                     <?php else: ?>
                     <div style="font-size:11px;color:#6b7280">مشمول</div>
                     <?php endif; ?>
@@ -268,8 +241,8 @@ include 'includes/header.php';
                   <div style="display:flex;justify-content:space-between;font-size:10px;color:#9ca3af">
                     <span><?= $fp_base_u ?></span><span><?= $fp_base_u + 47 ?></span>
                   </div>
-                  <?php if (!empty($fp['per_user']) && (float)$fp['per_user']['price_monthly'] > 0): ?>
-                  <div style="font-size:11px;color:#7c3aed;margin-top:2px">فوق <?= $fp_base_u ?>: +<?= number_format((float)$fp['per_user']['price_monthly'],0) ?> ر.س/مستخدم/شهر</div>
+                  <?php if (!empty($fp['per_user']) && (float)$fp['per_user']['price_yearly'] > 0): ?>
+                  <div style="font-size:11px;color:#7c3aed;margin-top:2px">فوق <?= $fp_base_u ?>: +<?= number_format((float)$fp['per_user']['price_yearly'],0) ?> ر.س/مستخدم/سنة</div>
                   <?php endif; ?>
                 </div>
 
@@ -284,8 +257,8 @@ include 'includes/header.php';
                   <div style="display:flex;justify-content:space-between;font-size:10px;color:#9ca3af">
                     <span><?= $fp_base_c ?></span><span><?= $fp_base_c + 950 ?></span>
                   </div>
-                  <?php if (!empty($fp['per_100_cases']) && (float)$fp['per_100_cases']['price_monthly'] > 0): ?>
-                  <div style="font-size:11px;color:#7c3aed;margin-top:2px">فوق <?= $fp_base_c ?>: +<?= number_format((float)$fp['per_100_cases']['price_monthly'],0) ?> ر.س/100 قضية</div>
+                  <?php if (!empty($fp['per_100_cases']) && (float)$fp['per_100_cases']['price_yearly'] > 0): ?>
+                  <div style="font-size:11px;color:#7c3aed;margin-top:2px">فوق <?= $fp_base_c ?>: +<?= number_format((float)$fp['per_100_cases']['price_yearly'],0) ?> ر.س/100 قضية/سنة</div>
                   <?php endif; ?>
                 </div>
 
@@ -296,7 +269,7 @@ include 'includes/header.php';
                 <div style="font-size:12px;font-weight:700;color:#5b21b6;margin-bottom:8px">تفصيل السعر</div>
                 <div id="pub_bd_items" style="font-size:12px;color:#374151"></div>
                 <div style="border-top:1px solid #ede9fe;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;align-items:center">
-                  <span style="font-size:13px;font-weight:700;color:#1f2937">الإجمالي / شهر</span>
+                  <span style="font-size:13px;font-weight:700;color:#1f2937">الإجمالي / سنة</span>
                   <span style="font-size:18px;font-weight:900;color:#7c3aed" id="pub_total_lbl">0 ر.س</span>
                 </div>
               </div>
@@ -318,26 +291,22 @@ include 'includes/header.php';
     </div>
 
     <script>
-    var _pub_fp = <?= json_encode(array_map('floatval', array_column($fp, 'price_monthly', 'feature_key'))) ?>;
+    var _pub_fp = <?= json_encode(array_map('floatval', array_column($fp, 'price_yearly', 'feature_key'))) ?>;
     var _pub_fp_lbl = <?= json_encode(array_column($fp, 'feature_label', 'feature_key')) ?>;
     var _pub_base_u = <?= $fp_base_u ?>, _pub_base_c = <?= $fp_base_c ?>, _pub_base_p = <?= $fp_base_p ?>;
 
     function pubCalc() {
-      console.log('pubCalc called');
       var total = _pub_base_p;
       var bd = [];
       if (_pub_base_p > 0) bd.push({l:'الأساس', v:_pub_base_p});
 
-      // features - DEBUG
-      var checkedCount = 0;
+      // features
       document.querySelectorAll('.pub-feat-chk').forEach(function(chk) {
         var lbl = chk.closest('.pub-feat-lbl');
         if (chk.checked) {
-          checkedCount++;
-          var pm = parseFloat(lbl.dataset.pm || '0') || 0;
-          console.log('Feature', chk.dataset.key, 'pm=', pm);
-          total += pm;
-          if (pm > 0) bd.push({l: _pub_fp_lbl[chk.dataset.key] || chk.dataset.key, v: pm});
+          var py = parseFloat(lbl.dataset.py || '0') || 0;
+          total += py;
+          if (py > 0) bd.push({l: _pub_fp_lbl[chk.dataset.key] || chk.dataset.key, v: py});
           lbl.style.borderColor = '#7c3aed';
           lbl.style.background  = '#f5f3ff';
         } else {
@@ -345,8 +314,6 @@ include 'includes/header.php';
           lbl.style.background  = '#fff';
         }
       });
-      console.log('Checked features:', checkedCount, 'Total price:', total);
-
 
       // users
       var users = parseInt(document.getElementById('pub_users').value);
@@ -368,13 +335,10 @@ include 'includes/header.php';
 
       total = Math.max(0, Math.round(total * 100) / 100);
 
-      // Force display update
       var priceDisplay = document.getElementById('pub_price_display');
       var totalDisplay = document.getElementById('pub_total_lbl');
       priceDisplay.textContent = total.toLocaleString('ar-SA',{maximumFractionDigits:0});
       totalDisplay.textContent = total.toLocaleString('ar-SA',{maximumFractionDigits:0}) + ' ر.س';
-      console.log('Display updated:', priceDisplay.textContent);
-
 
       // تفصيل
       var bdEl = document.getElementById('pub_bd_items');
@@ -400,15 +364,12 @@ include 'includes/header.php';
       var users   = document.getElementById('pub_users').value;
       var cases   = document.getElementById('pub_cases').value;
       var price   = document.getElementById('pub_total_lbl').textContent.replace(/[^0-9.]/g,'');
-      var url = 'register.php?custom=1&features='+encodeURIComponent(feats.join(','))+'&users='+users+'&cases='+cases+'&storage=0&price='+price;
+      var url = 'register.php?custom=1&features='+encodeURIComponent(feats.join(','))+'&users='+users+'&cases='+cases+'&storage=0&price='+price+'&billing=yearly';
       window.location.href = url;
     }
 
     // init with DOM ready
-    document.addEventListener('DOMContentLoaded', function() {
-      console.log('_pub_fp loaded:', Object.keys(_pub_fp));
-      pubCalc();
-    });
+    document.addEventListener('DOMContentLoaded', pubCalc);
     // Also call immediately
     pubCalc();
     </script>

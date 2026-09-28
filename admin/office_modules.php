@@ -379,7 +379,7 @@ include '../includes/admin_header.php';
         <?php if ($m['description']): ?><div class="text-muted" style="font-size:12px"><?= e($m['description']) ?></div><?php endif; ?>
       </div>
       <div class="text-muted" style="font-size:12px;white-space:nowrap">
-        السعر الأساسي: <b><?= number_format((float)$m['base_price'],2) ?></b> ر.س/شهرياً
+        السعر الأساسي: <b><?= number_format((float)$m['base_price'],2) ?></b> ر.س/سنة
       </div>
       <button type="button" class="btn btn-sm btn-outline-primary" onclick='editModuleDef(<?= json_encode($m, JSON_HEX_APOS|JSON_HEX_QUOT) ?>)'><i class="fas fa-edit"></i></button>
       <a href="office_modules.php?delete_module=<?= $m['id'] ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('حذف هذا الموديول نهائياً؟ سيُعطَّل تلقائياً عند كل المكاتب المفعَّل لديها.')"><i class="fas fa-trash"></i></a>
@@ -466,9 +466,9 @@ include '../includes/admin_header.php';
               <input type="text" name="icon" id="mod_icon" class="form-control" placeholder="bullhorn">
             </div>
             <div class="col-md-6">
-              <label class="form-label fw-semibold">السعر الأساسي (ر.س/شهرياً)</label>
+              <label class="form-label fw-semibold">السعر الأساسي (ر.س/سنة)</label>
               <input type="number" name="base_price" id="mod_price" class="form-control" min="0" step="0.01" value="0">
-              <div class="form-text">مرجعي فقط الآن — يمكن تخصيصه لكل مكتب لاحقاً</div>
+              <div class="form-text">مرجعي فقط الآن — يمكن تخصيصه لكل مكتب لاحقاً. صار سعراً سنوياً (كان شهرياً) — راجع القيم الحالية.</div>
             </div>
           </div>
           <div class="form-check mt-3">

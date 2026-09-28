@@ -21,19 +21,18 @@ if (isset($_POST['toggle_pkg'])) {
 /* ── معالجة POST ── */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    /* ① حفظ بيانات الباقة الأساسية */
+    /* ① حفظ بيانات الباقة الأساسية — التسعير سنوي فقط */
     if ($_POST['form_type'] === 'package') {
         $name   = $conn->real_escape_string($_POST['name']);
-        $pm     = (float)$_POST['price_monthly'];
         $py     = (float)$_POST['price_yearly'];
         $active = isset($_POST['is_active']) ? 1 : 0;
 
         if (!empty($_POST['id'])) {
             $id = (int)$_POST['id'];
-            $conn->query("UPDATE packages SET name='$name',price_monthly=$pm,price_yearly=$py,is_active=$active WHERE id=$id");
+            $conn->query("UPDATE packages SET name='$name',price_yearly=$py,is_active=$active WHERE id=$id");
         } else {
             $conn->query("INSERT INTO packages (name,price_monthly,price_yearly,max_users,max_cases,is_active)
-                          VALUES ('$name',$pm,$py,3,50,$active)");
+                          VALUES ('$name',0,$py,3,50,$active)");
             $id = $conn->insert_id;
             // إدراج مزايا افتراضية للباقة الجديدة
             $defaults = [
@@ -107,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 /* ── جلب الباقات مع مزاياها ── */
-$packages = $conn->query("SELECT p.*, (SELECT COUNT(*) FROM offices WHERE package_id=p.id) offices_count FROM packages p ORDER BY p.price_monthly ASC");
+$packages = $conn->query("SELECT p.*, (SELECT COUNT(*) FROM offices WHERE package_id=p.id) offices_count FROM packages p ORDER BY p.price_yearly ASC");
 $pkgs = [];
 while ($p = $packages->fetch_assoc()) {
     $pkgs[] = $p;
@@ -195,7 +194,7 @@ $featureGroups = [
             ?>
             <th style="text-align:center;padding:14px 16px;border-bottom:2px solid #e5e7eb">
               <div class="fw-bold" style="color:<?= $color ?>;font-size:14px"><?= e($p['name']) ?></div>
-              <small class="text-muted"><?= number_format($p['price_monthly']) ?> ر.س/شهر</small>
+              <small class="text-muted"><?= number_format($p['price_yearly']) ?> ر.س/سنة</small>
               <?php if (!$p['is_active']): ?>
               <div><span style="background:#fee2e2;color:#991b1b;border-radius:50px;padding:1px 8px;font-size:10px;font-weight:700">مخفية</span></div>
               <?php endif; ?>
@@ -277,11 +276,8 @@ foreach ($pkgs as $idx => $p):
     <div class="card-body" style="background:linear-gradient(135deg,<?= $c1 ?>,<?= $c2 ?>);border-radius:0;padding:24px 20px;text-align:center">
       <h4 class="fw-bold text-white mb-1"><?= e($p['name']) ?></h4>
       <div class="text-white" style="font-size:28px;font-weight:900;line-height:1">
-        <?= number_format($p['price_monthly']) ?>
-        <small style="font-size:14px;font-weight:400">ر.س/شهر</small>
-      </div>
-      <div style="color:rgba(255,255,255,.6);font-size:12px;margin-top:4px">
-        <?= number_format($p['price_yearly']) ?> ر.س سنوياً
+        <?= number_format($p['price_yearly']) ?>
+        <small style="font-size:14px;font-weight:400">ر.س/سنة</small>
       </div>
       <div class="mt-3 d-flex align-items-center justify-content-center gap-2">
         <span class="pkg-status-lbl" id="lbl_<?= $p['id'] ?>"
@@ -566,12 +562,7 @@ document.querySelectorAll('.feat-toggle').forEach(function(label) {
                    value="<?= e($edit['name'] ?? '') ?>" placeholder="مثال: الاحترافية">
           </div>
           <div class="row g-3">
-            <div class="col-6">
-              <label class="form-label fw-bold">السعر الشهري (ر.س)</label>
-              <input type="number" name="price_monthly" class="form-control" step="0.01"
-                     value="<?= $edit['price_monthly'] ?? '' ?>" placeholder="499">
-            </div>
-            <div class="col-6">
+            <div class="col-12">
               <label class="form-label fw-bold">السعر السنوي (ر.س)</label>
               <input type="number" name="price_yearly" class="form-control" step="0.01"
                      value="<?= $edit['price_yearly'] ?? '' ?>" placeholder="4990">
