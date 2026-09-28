@@ -1,0 +1,41 @@
+name: Deploy to production
+
+# يشتغل تلقائياً فور أي دمج/دفع مباشر إلى main.
+on:
+  push:
+    branches: [main]
+
+# يمنع تشغيل نشرتين في نفس اللحظة (لو صار أكثر من دمج بسرعة) — الثانية تنتظر دور الأولى
+# بدل أن تتعارض معها وتترك الموقع بحالة منتصف-تحديث.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload changed files via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./
+          server-dir: /public_html/
+          # لا يحذف أي شيء موجود على السيرفر وغير موجود في المستودع — يرفع فقط الملفات
+          # الجديدة/المتغيّرة. هذا يحمي ملفات العملاء المرفوعة (uploads) وملف قاعدة البيانات
+          # وملف install.lock من الحذف بالخطأ لأنها غير مُتتبَّعة بـ git أصلاً.
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/.github/**
+            config/db.php
+            install.lock
+            uploads/**
+            vendor/**
