@@ -1,0 +1,4 @@
+ملف تجريبي — للتأكد أن الرفع التلقائي عبر GitHub Actions يصل للمجلد الصحيح.
+Deploy pipeline test file — confirms auto-deploy lands in the right folder.
+
+إن رأيت هذا الملف على الموقع فالرفع يعمل بشكل صحيح، ويمكنك حذفه بأمان بعدها.
