@@ -23,7 +23,9 @@ $_canSessions = can('sessions','view');
 $_canTasks    = can('tasks','view');
 $_canAppts    = can('tasks','view'); // المواعيد تتبع نفس صلاحية المهام (لا قسم صلاحيات منفصل لها)
 $_canClients  = can('clients','view');
-$_canFinance  = can('finance','view') && hasFeature($conn, $oid, 'has_finance');
+// بيانات المالية هنا مصدرها جدول الفواتير فعلياً (فواتير مدفوعة) — فيُشترط امتلاك
+// صلاحيتَي «الشؤون المالية» و«الفواتير» معاً، لا إحداهما فقط، قبل إظهار أي رقم مالي
+$_canFinance  = can('finance','view') && can('invoices','view') && hasFeature($conn, $oid, 'has_finance');
 
 /* ── فلتر التاريخ (افتراضياً آخر 30 يوماً) ── */
 $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['from'] ?? '') ? $_GET['from'] : date('Y-m-d', strtotime('-30 days'));
