@@ -26,7 +26,6 @@ include 'includes/header.php';
         <p class="lx-hero-desc"><?=e(sc($conn,'hero_text','منصة متكاملة لإدارة القضايا والعملاء والشؤون المالية — مصممة خصيصاً للمحامين في المملكة.'))?></p>
         <div class="d-flex flex-wrap gap-3 mb-5">
           <a href="pricing.php" class="lx-btn-cta"><i class="fas fa-rocket"></i><?=e(sc($conn,'btn_register','ابدأ مجاناً — 14 يوم'))?></a>
-          <a href="features.php" class="lx-btn-out"><i class="fas fa-play-circle"></i><?=e(sc($conn,'btn_learn','شاهد كيف يعمل'))?></a>
         </div>
         <!--
         <div class="lx-hero-stats">
