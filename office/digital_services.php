@@ -41,7 +41,14 @@ try {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_office_date (office_id, created_at), INDEX idx_client (client_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $conn->query("CREATE TABLE IF NOT EXISTS office_service_types (
+        id INT AUTO_INCREMENT PRIMARY KEY, office_id INT NOT NULL,
+        name VARCHAR(150) NOT NULL, is_active TINYINT(1) NOT NULL DEFAULT 1,
+        sort_order INT NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_office (office_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (\Throwable $e) {}
+try { $conn->query("ALTER TABLE office_services ADD COLUMN type_id INT DEFAULT NULL"); } catch (\Throwable $e) {}
 
 // ── تأكيد أعمدة الفواتير/الحركات المطلوبة للفوترة التلقائية ──
 if (function_exists('zatca_migrate')) { try { zatca_migrate($conn); } catch (\Throwable $e) {} }
@@ -156,20 +163,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name  = $conn->real_escape_string(trim($_POST['name'] ?? ''));
         $desc  = $conn->real_escape_string(trim($_POST['description'] ?? ''));
         $price = round((float) ($_POST['price'] ?? 0), 2);
+        $tid   = (int) ($_POST['type_id'] ?? 0);
+        if ($tid && !$conn->query("SELECT id FROM office_service_types WHERE id=$tid AND office_id=$oid")->num_rows) $tid = 0;
+        $tidSql = $tid ?: 'NULL';
         if ($name === '' || $price < 0) {
             header("Location: digital_services.php?tab=catalog&msg=invalid"); exit;
         }
         if ($sid) {
-            $ok = $conn->query("UPDATE office_services SET name='$name', description='$desc', price=$price
+            $ok = $conn->query("UPDATE office_services SET name='$name', description='$desc', price=$price, type_id=$tidSql
                 WHERE id=$sid AND office_id=$oid");
         } else {
-            $ok = $conn->query("INSERT INTO office_services (office_id,name,description,price,vat_rate)
-                VALUES ($oid,'$name','$desc',$price,$VAT)");
+            $ok = $conn->query("INSERT INTO office_services (office_id,name,description,price,vat_rate,type_id)
+                VALUES ($oid,'$name','$desc',$price,$VAT,$tidSql)");
         }
         if (!$ok) {
             header("Location: digital_services.php?tab=catalog&msg=dberror&detail=" . urlencode(mb_substr($conn->error, 0, 200))); exit;
         }
         header("Location: digital_services.php?tab=catalog&msg=saved"); exit;
+    }
+
+    /* ─── أنواع الخدمات — قائمة تُدار من إعدادات الخدمات الرقمية (المالك/الأدمن فقط) ─── */
+    if ($ft === 'type_save') {
+        if (!$isOwner) { header("Location: digital_services.php?tab=types&msg=denied"); exit; }
+        $tid  = (int) ($_POST['id'] ?? 0);
+        $name = $conn->real_escape_string(trim($_POST['name'] ?? ''));
+        if ($name === '') { header("Location: digital_services.php?tab=types&msg=invalid"); exit; }
+        if ($tid) {
+            $ok = $conn->query("UPDATE office_service_types SET name='$name' WHERE id=$tid AND office_id=$oid");
+        } else {
+            $ok = $conn->query("INSERT INTO office_service_types (office_id,name) VALUES ($oid,'$name')");
+        }
+        if (!$ok) { header("Location: digital_services.php?tab=types&msg=dberror&detail=" . urlencode(mb_substr($conn->error, 0, 200))); exit; }
+        header("Location: digital_services.php?tab=types&msg=saved"); exit;
+    }
+    if ($ft === 'type_toggle') {
+        if (!$isOwner) { header("Location: digital_services.php?tab=types&msg=denied"); exit; }
+        $tid = (int) ($_POST['id'] ?? 0);
+        $conn->query("UPDATE office_service_types SET is_active = 1 - is_active WHERE id=$tid AND office_id=$oid");
+        header("Location: digital_services.php?tab=types"); exit;
+    }
+    if ($ft === 'type_delete') {
+        if (!$isOwner) { header("Location: digital_services.php?tab=types&msg=denied"); exit; }
+        $tid = (int) ($_POST['id'] ?? 0);
+        // فكّ ارتباط أي خدمة بهذا النوع قبل حذفه بدل تركها بمرجع معلَّق
+        $conn->query("UPDATE office_services SET type_id=NULL WHERE type_id=$tid AND office_id=$oid");
+        $conn->query("DELETE FROM office_service_types WHERE id=$tid AND office_id=$oid");
+        header("Location: digital_services.php?tab=types&msg=deleted"); exit;
     }
     if ($ft === 'catalog_toggle') {
         if (!$isOwner) { header("Location: digital_services.php?tab=catalog&msg=denied"); exit; }
@@ -274,7 +313,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 /* ════════ بيانات العرض ════════ */
-$tab = ($_GET['tab'] ?? 'requests') === 'catalog' && $isOwner ? 'catalog' : 'requests';
+$tab = $_GET['tab'] ?? 'requests';
+if (!$isOwner || !in_array($tab, ['requests', 'catalog', 'types'], true)) $tab = 'requests';
+
+$serviceTypes = [];
+$tr = $conn->query("SELECT * FROM office_service_types WHERE office_id=$oid ORDER BY is_active DESC, sort_order, id");
+if ($tr) while ($x = $tr->fetch_assoc()) $serviceTypes[] = $x;
+$activeTypes = array_values(array_filter($serviceTypes, fn($t) => $t['is_active']));
+$typeNameById = array_column($serviceTypes, 'name', 'id');
 
 $services = [];
 $sr = $conn->query("SELECT * FROM office_services WHERE office_id=$oid ORDER BY is_active DESC, sort_order, id");
@@ -282,17 +328,21 @@ if ($sr) while ($x = $sr->fetch_assoc()) $services[] = $x;
 $activeServices = array_values(array_filter($services, fn($s) => $s['is_active']));
 
 $fstat = $_GET['status_f'] ?? '';
+$ftype = (int) ($_GET['type_f'] ?? 0);
 $fq    = trim($_GET['q'] ?? '');
 $w = "sr.office_id=$oid";
 if (in_array($fstat, ['new', 'in_progress', 'completed', 'cancelled'], true)) $w .= " AND sr.status='$fstat'";
+if ($ftype) $w .= " AND os.type_id=$ftype";
 if ($fq !== '') { $qe = $conn->real_escape_string($fq); $w .= " AND (cl.full_name LIKE '%$qe%' OR cl.id_number LIKE '%$qe%' OR sr.service_name LIKE '%$qe%')"; }
 
 $requests = $conn->query("SELECT sr.*, cl.full_name client_name, cl.id_number client_idn,
-        c.case_number, inv.invoice_number, inv.public_token
+        c.case_number, inv.invoice_number, inv.public_token, ot.name type_name
     FROM service_requests sr
     LEFT JOIN clients cl  ON sr.client_id = cl.id
     LEFT JOIN cases c     ON sr.case_id  = c.id
     LEFT JOIN invoices inv ON sr.invoice_id = inv.id
+    LEFT JOIN office_services os ON sr.service_id = os.id
+    LEFT JOIN office_service_types ot ON os.type_id = ot.id
     WHERE $w ORDER BY sr.created_at DESC LIMIT 400");
 
 $cnt = $conn->query("SELECT
@@ -303,6 +353,10 @@ $cnt = $conn->query("SELECT
 $edit_svc = null;
 if ($isOwner && isset($_GET['edit_svc'])) {
     $edit_svc = $conn->query("SELECT * FROM office_services WHERE id=" . (int) $_GET['edit_svc'] . " AND office_id=$oid")->fetch_assoc();
+}
+$edit_type = null;
+if ($isOwner && isset($_GET['edit_type'])) {
+    $edit_type = $conn->query("SELECT * FROM office_service_types WHERE id=" . (int) $_GET['edit_type'] . " AND office_id=$oid")->fetch_assoc();
 }
 
 $nf = fn($v) => number_format((float) $v, 2);
@@ -363,6 +417,8 @@ include '../includes/office_header.php';
   <?php if ($isOwner): ?>
   <li class="nav-item"><a class="nav-link <?= $tab==='catalog'?'active':'' ?>" href="digital_services.php?tab=catalog">
     <i class="fas fa-tags me-1"></i>خدمات المكتب <span class="badge bg-secondary-subtle text-secondary ms-1"><?= count($services) ?></span></a></li>
+  <li class="nav-item"><a class="nav-link <?= $tab==='types'?'active':'' ?>" href="digital_services.php?tab=types">
+    <i class="fas fa-layer-group me-1"></i>أنواع الخدمات <span class="badge bg-secondary-subtle text-secondary ms-1"><?= count($serviceTypes) ?></span></a></li>
   <?php endif; ?>
 </ul>
 
@@ -383,6 +439,16 @@ include '../includes/office_header.php';
           <option value="cancelled" <?= $fstat==='cancelled'?'selected':'' ?>>ملغى</option>
         </select>
       </div>
+      <?php if ($serviceTypes): ?>
+      <div class="col-auto">
+        <select name="type_f" class="form-select form-select-sm">
+          <option value="0">كل الأنواع</option>
+          <?php foreach ($serviceTypes as $t): ?>
+          <option value="<?= $t['id'] ?>" <?= $ftype===(int)$t['id']?'selected':'' ?>><?= e($t['name']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <?php endif; ?>
       <div class="col-auto"><button class="btn btn-sm btn-primary"><i class="fas fa-search"></i></button>
         <a href="digital_services.php" class="btn btn-sm btn-outline-secondary">إعادة</a></div>
     </form>
@@ -410,7 +476,11 @@ include '../includes/office_header.php';
               <small class="text-muted font-monospace"><?= e($r['client_idn'] ?? '') ?></small>
               <?php if ($r['case_number']): ?><br><small class="text-primary"><i class="fas fa-gavel"></i> <?= e($r['case_number']) ?></small><?php endif; ?>
             </td>
-            <td><?= e($r['service_name']) ?><?php if ($r['notes']): ?><br><small class="text-muted"><?= e($r['notes']) ?></small><?php endif; ?></td>
+            <td>
+              <?= e($r['service_name']) ?>
+              <?php if ($r['type_name']): ?><br><span class="badge bg-info-subtle text-info" style="font-size:10px"><?= e($r['type_name']) ?></span><?php endif; ?>
+              <?php if ($r['notes']): ?><br><small class="text-muted"><?= e($r['notes']) ?></small><?php endif; ?>
+            </td>
             <td class="text-end"><?= $nf($r['amount']) ?></td>
             <td class="text-end fw-bold"><?= $nf($r['total']) ?> ﷼</td>
             <td>
@@ -451,18 +521,18 @@ include '../includes/office_header.php';
   </div>
 </div>
 
-<?php else: /* ═══ tab: catalog ═══ */ ?>
+<?php elseif ($tab === 'catalog'): ?>
 <div class="card">
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0 align-middle">
         <thead><tr>
-          <th>الخدمة</th><th class="text-end">السعر</th><th class="text-end">ض.ق.م 15%</th>
+          <th>الخدمة</th><th>النوع</th><th class="text-end">السعر</th><th class="text-end">ض.ق.م 15%</th>
           <th class="text-end">الإجمالي</th><th>الحالة</th><th>إجراءات</th>
         </tr></thead>
         <tbody>
         <?php if (!$services): ?>
-          <tr><td colspan="6" class="text-center text-muted py-4">لا خدمات بعد — اضغط «إضافة خدمة»</td></tr>
+          <tr><td colspan="7" class="text-center text-muted py-4">لا خدمات بعد — اضغط «إضافة خدمة»</td></tr>
         <?php else: foreach ($services as $sv):
           $vat = round($sv['price'] * ($sv['vat_rate'] ?: 15) / 100, 2); ?>
           <tr class="<?= $sv['is_active'] ? '' : 'opacity-50' ?>">
@@ -470,6 +540,9 @@ include '../includes/office_header.php';
               <div class="fw-semibold"><?= e($sv['name']) ?></div>
               <?php if ($sv['description']): ?><small class="text-muted"><?= e($sv['description']) ?></small><?php endif; ?>
             </td>
+            <td><?php if (!empty($sv['type_id']) && isset($typeNameById[$sv['type_id']])): ?>
+              <span class="badge bg-info-subtle text-info"><?= e($typeNameById[$sv['type_id']]) ?></span>
+              <?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
             <td class="text-end"><?= $nf($sv['price']) ?></td>
             <td class="text-end text-muted"><?= $nf($vat) ?></td>
             <td class="text-end fw-bold"><?= $nf($sv['price'] + $vat) ?> ﷼</td>
@@ -480,6 +553,43 @@ include '../includes/office_header.php';
                 <form method="POST" class="d-inline"><input type="hidden" name="form_type" value="catalog_toggle"><input type="hidden" name="id" value="<?= $sv['id'] ?>">
                   <button class="btn btn-sm btn-outline-secondary" title="<?= $sv['is_active']?'تعطيل':'تفعيل' ?>"><i class="fas fa-power-off"></i></button></form>
                 <form method="POST" class="d-inline" onsubmit="return confirm('حذف هذه الخدمة؟')"><input type="hidden" name="form_type" value="catalog_delete"><input type="hidden" name="id" value="<?= $sv['id'] ?>">
+                  <button class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button></form>
+              </div>
+            </td>
+          </tr>
+        <?php endforeach; endif; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<?php else: /* ═══ tab: types ═══ */ ?>
+<div class="alert alert-light border" style="font-size:12.5px">
+  <i class="fas fa-circle-info me-1 text-primary"></i>
+  أنواع الخدمات قائمة تُدار من هنا فقط — استخدمها لتصنيف خدمات المكتب (مثال: توثيق، استشارة، ترجمة)، وتظهر عند إضافة/تعديل أي خدمة في تبويب «خدمات المكتب».
+</div>
+<div class="d-flex justify-content-end mb-3">
+  <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#typeModal"><i class="fas fa-plus"></i> نوع جديد</button>
+</div>
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle">
+        <thead><tr><th>النوع</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+        <tbody>
+        <?php if (!$serviceTypes): ?>
+          <tr><td colspan="3" class="text-center text-muted py-4">لا أنواع بعد — اضغط «نوع جديد»</td></tr>
+        <?php else: foreach ($serviceTypes as $t): ?>
+          <tr class="<?= $t['is_active'] ? '' : 'opacity-50' ?>">
+            <td class="fw-semibold"><?= e($t['name']) ?></td>
+            <td><?= $t['is_active'] ? '<span class="badge bg-success-subtle text-success">مُفعّل</span>' : '<span class="badge bg-secondary-subtle text-secondary">مُعطّل</span>' ?></td>
+            <td>
+              <div class="d-flex gap-1">
+                <a href="digital_services.php?tab=types&edit_type=<?= $t['id'] ?>" class="btn btn-sm btn-outline-primary"><i class="fas fa-edit"></i></a>
+                <form method="POST" class="d-inline"><input type="hidden" name="form_type" value="type_toggle"><input type="hidden" name="id" value="<?= $t['id'] ?>">
+                  <button class="btn btn-sm btn-outline-secondary" title="<?= $t['is_active']?'تعطيل':'تفعيل' ?>"><i class="fas fa-power-off"></i></button></form>
+                <form method="POST" class="d-inline" onsubmit="return confirm('حذف هذا النوع؟ ستبقى الخدمات المرتبطة به بلا نوع.')"><input type="hidden" name="form_type" value="type_delete"><input type="hidden" name="id" value="<?= $t['id'] ?>">
                   <button class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button></form>
               </div>
             </td>
@@ -590,11 +700,48 @@ include '../includes/office_header.php';
             <input type="text" name="name" class="form-control" required value="<?= e($edit_svc['name'] ?? '') ?>"></div>
           <div class="mb-3"><label class="form-label fw-semibold">وصف مختصر</label>
             <input type="text" name="description" class="form-control" value="<?= e($edit_svc['description'] ?? '') ?>"></div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">نوع الخدمة</label>
+            <select name="type_id" class="form-select">
+              <option value="0">— بدون —</option>
+              <?php foreach ($serviceTypes as $t): ?>
+              <option value="<?= $t['id'] ?>" <?= (int)($edit_svc['type_id'] ?? 0)===(int)$t['id']?'selected':'' ?>>
+                <?= e($t['name']) ?><?= $t['is_active'] ? '' : ' (معطّل)' ?>
+              </option>
+              <?php endforeach; ?>
+            </select>
+            <?php if (!$serviceTypes): ?>
+            <div class="form-text">لا توجد أنواع بعد — أضِفها من تبويب «أنواع الخدمات».</div>
+            <?php endif; ?>
+          </div>
           <div class="mb-1"><label class="form-label fw-semibold">السعر الأساسي (قبل الضريبة) — ﷼</label>
             <input type="number" name="price" step="0.01" min="0" class="form-control" required
                    value="<?= e($edit_svc['price'] ?? '') ?>" id="svc_price"></div>
           <div class="form-text">الإجمالي المعروض للعميل = السعر + ضريبة القيمة المضافة 15%.
             <span id="svc_preview" class="fw-bold text-dark"></span></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+          <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>حفظ</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Modal: نوع خدمة ═══ -->
+<div class="modal fade" id="typeModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title"><i class="fas fa-layer-group me-2"></i><?= $edit_type ? 'تعديل نوع' : 'نوع جديد' ?></h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form method="POST">
+        <input type="hidden" name="form_type" value="type_save">
+        <input type="hidden" name="id" value="<?= (int) ($edit_type['id'] ?? 0) ?>">
+        <div class="modal-body">
+          <label class="form-label fw-semibold">اسم النوع *</label>
+          <input type="text" name="name" class="form-control" required autofocus
+                 placeholder="مثال: توثيق، استشارة، ترجمة" value="<?= e($edit_type['name'] ?? '') ?>">
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
@@ -675,6 +822,11 @@ include '../includes/office_header.php';
   // حتى لا يُنفَّذ new bootstrap.Modal() قبل تعريف bootstrap فيفشل بصمت ولا تُفتح النافذة
   document.addEventListener('DOMContentLoaded', function () {
     new bootstrap.Modal(document.getElementById('svcModal')).show();
+  });
+  <?php endif; ?>
+  <?php if ($edit_type): ?>
+  document.addEventListener('DOMContentLoaded', function () {
+    new bootstrap.Modal(document.getElementById('typeModal')).show();
   });
   <?php endif; ?>
   <?php if ($_new_client_row): ?>

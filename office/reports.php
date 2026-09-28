@@ -13,11 +13,15 @@ $page_title = 'التقارير المتقدمة';
 
 $_restricted = isRestricted();
 $_uid        = (int)($_SESSION['user_id'] ?? 0);
+// مدير المهام والمواعيد (صلاحية "اعتماد" على قسم المهام) يرى تقريراً كاملاً لكل الموظفين؛
+// غيره يرى مهامه ومواعيده فقط — نفس المبدأ المطبَّق في tasks.php
+$_isTaskMgr  = can('tasks','approve');
 
 // كل قسم يظهر في التقرير حسب صلاحية هذا الموظّف بالضبط — نفس صلاحيات النظام الأساسية
 $_canCases    = can('cases','view');
 $_canSessions = can('sessions','view');
 $_canTasks    = can('tasks','view');
+$_canAppts    = can('tasks','view'); // المواعيد تتبع نفس صلاحية المهام (لا قسم صلاحيات منفصل لها)
 $_canClients  = can('clients','view');
 $_canFinance  = can('finance','view') && hasFeature($conn, $oid, 'has_finance');
 
@@ -32,6 +36,7 @@ $tabs = [];
 if ($_canCases)    $tabs['cases']    = 'القضايا';
 if ($_canSessions) $tabs['sessions'] = 'الجلسات';
 if ($_canTasks)    $tabs['tasks']    = 'المهام';
+if ($_canAppts)    $tabs['appointments'] = 'المواعيد';
 if ($_canClients)  $tabs['clients']  = 'العملاء';
 if ($_canFinance)  $tabs['finance']  = 'المالية';
 
@@ -46,7 +51,9 @@ $status_f = $_GET['status_f'] ?? '';
 $S_CASE = ['active'=>'نشطة','closed'=>'مغلقة','suspended'=>'موقوفة','won'=>'مكسوبة','lost'=>'خاسرة','settled'=>'متسوية'];
 $S_SESS = ['scheduled'=>'مجدولة','held'=>'منعقدة','postponed'=>'مؤجّلة','cancelled'=>'ملغاة'];
 $S_TASK = ['pending'=>'معلقة','in_progress'=>'جارية','completed'=>'مكتملة','cancelled'=>'ملغاة'];
-$_statusOptions = ['cases'=>$S_CASE,'sessions'=>$S_SESS,'tasks'=>$S_TASK];
+$S_APPT = ['scheduled'=>'مجدول','completed'=>'تم','cancelled'=>'ملغي'];
+$_apTypes = ['meeting'=>'اجتماع','court'=>'محكمة','consultation'=>'استشارة','other'=>'أخرى'];
+$_statusOptions = ['cases'=>$S_CASE,'sessions'=>$S_SESS,'tasks'=>$S_TASK,'appointments'=>$S_APPT];
 
 /* ═══ القضايا ═══ */
 $cases_total = 0; $cases_by_status = []; $cases_list = null;
@@ -84,7 +91,7 @@ if ($_canSessions) {
 $tasks_total = 0; $tasks_by_status = []; $tasks_list = null;
 if ($_canTasks) {
     $tw = "t.office_id=$oid AND DATE(t.due_date) BETWEEN '$fromE' AND '$toE'";
-    if ($_restricted) $tw .= " AND (t.assigned_to_id=$_uid OR (t.assigned_to_id IS NULL AND t.assigned_to='" . $conn->real_escape_string($_SESSION['full_name'] ?? '') . "'))";
+    if (!$_isTaskMgr) $tw .= " AND (t.assigned_to_id=$_uid OR (t.assigned_to_id IS NULL AND t.assigned_to='" . $conn->real_escape_string($_SESSION['full_name'] ?? '') . "'))";
     if ($tab === 'tasks' && $_rpQ !== '') $tw .= " AND (t.title LIKE '%$_rpQE%' OR t.assigned_to LIKE '%$_rpQE%')";
     if ($tab === 'tasks' && $status_f !== '') $tw .= " AND t.status='" . $conn->real_escape_string($status_f) . "'";
     $tasks_total = (int)dbVal($conn, "SELECT COUNT(*) FROM tasks t WHERE $tw");
@@ -94,6 +101,25 @@ if ($_canTasks) {
         SELECT t.*, c.case_number
         FROM tasks t LEFT JOIN cases c ON t.case_id = c.id
         WHERE $tw ORDER BY t.due_date DESC LIMIT 300
+    ");
+}
+
+/* ═══ المواعيد ═══ */
+$appts_total = 0; $appts_by_status = []; $appts_list = null;
+if ($_canAppts) {
+    $aw = "a.office_id=$oid AND DATE(a.appointment_date) BETWEEN '$fromE' AND '$toE'";
+    if (!$_isTaskMgr) $aw .= " AND a.assigned_to_id=$_uid";
+    if ($tab === 'appointments' && $_rpQ !== '') $aw .= " AND (a.title LIKE '%$_rpQE%' OR a.location LIKE '%$_rpQE%')";
+    if ($tab === 'appointments' && $status_f !== '') $aw .= " AND a.status='" . $conn->real_escape_string($status_f) . "'";
+    $appts_total = (int)dbVal($conn, "SELECT COUNT(*) FROM appointments a WHERE $aw");
+    $r = $conn->query("SELECT status, COUNT(*) c FROM appointments a WHERE $aw GROUP BY status");
+    if ($r) while ($x = $r->fetch_assoc()) $appts_by_status[$x['status']] = (int)$x['c'];
+    $appts_list = $conn->query("
+        SELECT a.*, cl.full_name client_name, au.full_name assignee_name
+        FROM appointments a
+        LEFT JOIN clients cl ON a.client_id = cl.id
+        LEFT JOIN users au   ON a.assigned_to_id = au.id
+        WHERE $aw ORDER BY a.appointment_date DESC LIMIT 300
     ");
 }
 
@@ -272,7 +298,10 @@ function rpToggleCustom() {
         <input type="date" name="to" class="form-control mk-plain-date" value="<?= e($to) ?>">
       </div>
       <div class="rp-filter-actions">
-        <button class="btn btn-primary"><i class="fas fa-filter me-1"></i>تطبيق</button>
+        <button class="btn btn-primary"><i class="fas fa-filter me-1"></i>تطبيق مخصص</button>
+        <a href="reports.php?tab=<?= e($tab) ?>&from=2000-01-01&to=<?= date('Y-m-d') ?>" class="btn btn-outline-primary" title="كل الفترات بلا استثناء">
+          <i class="fas fa-infinity me-1"></i>تقرير شامل
+        </a>
         <a href="reports.php?tab=<?= e($tab) ?>" class="btn btn-outline-secondary" title="إعادة تعيين"><i class="fas fa-rotate-right"></i></a>
       </div>
     </form>
@@ -313,6 +342,17 @@ function rpToggleCustom() {
       <div class="card-body">
         <div class="rp-stat-lbl"><i class="fas fa-list-check me-1"></i>المهام</div>
         <div class="rp-stat-val"><?= $tasks_total ?></div>
+      </div>
+    </div>
+  </div>
+  <?php endif; ?>
+  <?php if ($_canAppts): ?>
+  <div class="col-6 col-lg-3">
+    <div class="card rp-stat" style="background:linear-gradient(135deg,#0f766e,#2dd4bf)">
+      <i class="fas fa-calendar-alt rp-bg-ico"></i>
+      <div class="card-body">
+        <div class="rp-stat-lbl"><i class="fas fa-calendar-alt me-1"></i>المواعيد</div>
+        <div class="rp-stat-val"><?= $appts_total ?></div>
       </div>
     </div>
   </div>
@@ -429,6 +469,36 @@ function rpToggleCustom() {
         </tr>
         <?php endwhile; else: ?>
         <tr><td colspan="6" class="text-center text-muted py-4">لا توجد مهام في هذه الفترة</td></tr>
+        <?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
+
+<?php if ($tab === 'appointments'): ?>
+<div class="card">
+  <div class="card-header d-flex flex-wrap gap-2">
+    <span><i class="fas fa-calendar-alt me-2 text-teal"></i>المواعيد (<?= $appts_total ?>)</span>
+    <?php foreach ($appts_by_status as $st=>$ct): ?><span class="badge bg-secondary-subtle text-secondary ms-1"><?= $S_APPT[$st] ?? $st ?>: <?= $ct ?></span><?php endforeach; ?>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead><tr><th>الموعد</th><th>النوع</th><th>العميل</th><th>المكلَّف</th><th>الحالة</th><th>التاريخ والوقت</th></tr></thead>
+        <tbody>
+        <?php if ($appts_list && $appts_list->num_rows): while ($a = $appts_list->fetch_assoc()): ?>
+        <tr>
+          <td style="max-width:220px" class="text-truncate"><?= e($a['title']) ?></td>
+          <td><?= e($_apTypes[$a['type']] ?? $a['type']) ?></td>
+          <td><?= e($a['client_name'] ?? '—') ?></td>
+          <td><?= e($a['assignee_name'] ?? '—') ?></td>
+          <td><?= statusBadge($a['status']) ?></td>
+          <td><?= dDate($a['appointment_date'], true) ?></td>
+        </tr>
+        <?php endwhile; else: ?>
+        <tr><td colspan="6" class="text-center text-muted py-4">لا توجد مواعيد في هذه الفترة</td></tr>
         <?php endif; ?>
         </tbody>
       </table>
