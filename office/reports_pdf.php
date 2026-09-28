@@ -22,7 +22,9 @@ $_canSessions = can('sessions','view');
 $_canTasks    = can('tasks','view');
 $_canAppts    = can('tasks','view');
 $_canClients  = can('clients','view');
-$_canFinance  = can('finance','view') && hasFeature($conn, $oid, 'has_finance');
+// بيانات المالية هنا مصدرها جدول الفواتير فعلياً (فواتير مدفوعة) — فيُشترط امتلاك
+// صلاحيتَي «الشؤون المالية» و«الفواتير» معاً، لا إحداهما فقط، قبل إظهار أي رقم مالي
+$_canFinance  = can('finance','view') && can('invoices','view') && hasFeature($conn, $oid, 'has_finance');
 
 $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['from'] ?? '') ? $_GET['from'] : date('Y-m-d', strtotime('-30 days'));
 $to   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['to']   ?? '') ? $_GET['to']   : date('Y-m-d');
