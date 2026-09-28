@@ -67,7 +67,7 @@ try {
         <h3 class="lx-feat-title"><?= e($_fm['name']) ?></h3>
         <p class="lx-feat-desc"><?= e($_fm['description']) ?></p>
         <?php if ((float)$_fm['base_price'] > 0): ?>
-        <div style="font-size:12px;font-weight:700;color:var(--gold3);margin-top:8px">من <?= number_format((float)$_fm['base_price'],0) ?> ر.س / شهر</div>
+        <div style="font-size:12px;font-weight:700;color:var(--gold3);margin-top:8px">من <?= number_format((float)$_fm['base_price'],0) ?> ر.س / سنة</div>
         <?php endif; ?>
       </div>
       <?php endforeach; ?>

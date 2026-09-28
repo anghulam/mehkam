@@ -22,8 +22,8 @@ function custom_pkg_inject_modules($conn, array &$fp, ?array &$keys = null) {
             'feature_key'   => $k,
             'feature_label' => $m['name'],
             'feature_icon'  => $m['icon'] ?: 'puzzle-piece',
-            'price_monthly' => (float)$m['base_price'],
-            'price_yearly'  => 0,
+            'price_monthly' => 0,
+            'price_yearly'  => (float)$m['base_price'],
             'is_module'     => 1,
         ];
         if ($keys !== null) $keys[] = $k;
@@ -75,7 +75,7 @@ function pkg_includes_feature($conn, $oid, $key) {
 function store_feature_items($conn, $oid) {
     $items = [];
     try {
-        $r = $conn->query("SELECT feature_key,feature_label,feature_icon,price_monthly FROM feature_prices
+        $r = $conn->query("SELECT feature_key,feature_label,feature_icon,price_yearly FROM feature_prices
             WHERE feature_key LIKE 'has\\_%' AND is_active=1 ORDER BY sort_order");
         if ($r) while ($f = $r->fetch_assoc()) {
             if (pkg_includes_feature($conn, $oid, $f['feature_key'])) continue;
@@ -84,7 +84,7 @@ function store_feature_items($conn, $oid) {
                 'name'        => $f['feature_label'],
                 'description' => 'ميزة غير مضمّنة في باقتك الحالية — فعّلها كإضافة',
                 'icon'        => $f['feature_icon'] ?: 'star',
-                'base_price'  => (float)$f['price_monthly'],
+                'base_price'  => (float)$f['price_yearly'],
                 'is_feature'  => 1,
             ];
         }

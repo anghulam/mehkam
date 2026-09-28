@@ -6,7 +6,8 @@ require_once '../includes/payment_helper.php';
 
 
 $pkg_id        = (int)($_GET['package'] ?? $_POST['package_id'] ?? 0);
-$billing_cycle = in_array($_GET['billing'] ?? $_POST['billing_cycle'] ?? '', ['yearly']) ? 'yearly' : 'monthly';
+// التسعير سنوي فقط في كل مسارات التسجيل — لا خيار شهري إطلاقاً
+$billing_cycle = 'yearly';
 $is_custom     = !empty($_GET['custom']) || !empty($_POST['is_custom']);
 
 // بيانات الباقة المخصصة من URL
@@ -56,7 +57,7 @@ if ($pkg_id) {
     if ($r) $pkg = $r->fetch_assoc();
 }
 // باقة سعرها 0 = مخصصة (يتفاوض عليها الأدمن)
-if ($pkg && (float)$pkg['price_monthly'] == 0) {
+if ($pkg && (float)$pkg['price_yearly'] == 0) {
     $is_custom = true;
 }
 if (!$is_custom && !$pkg) { header("Location: pricing.php"); exit; }
@@ -148,8 +149,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $trial_row = $conn->query("SELECT setting_value FROM site_content WHERE setting_key='trial_days' LIMIT 1");
                 $trial_days = ($trial_row && $td = $trial_row->fetch_assoc()) ? max(1,(int)$td['setting_value']) : 14;
 
-                $bc = $conn->real_escape_string($_POST['billing_cycle'] ?? 'monthly');
-                $bc = in_array($bc, ['monthly','yearly']) ? $bc : 'monthly';
+                // التسجيل العام يُنشئ دائماً باشتراك سنوي — لا مدخل يقدر يغيّرها لشهري
+                $bc = 'yearly';
 
                 // ── التأكد من وجود أعمدة الدفع في جدول offices (توافق مع قواعد بيانات قديمة) ──
                 // يُنفَّذ خارج المعاملة لأن أوامر ALTER تُنهي المعاملة ضمنياً في MySQL
@@ -251,7 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $pkg_label = 'مخصصة';
                             $c_price_fmt = number_format($c_price);
                             $conn->query("INSERT INTO notifications(title,message,type)
-                                VALUES('طلب باقة مخصصة جديد','مكتب \"$on\" يطلب باقة مخصصة بسعر $c_price_fmt ر.س/شهر','warning')");
+                                VALUES('طلب باقة مخصصة جديد','مكتب \"$on\" يطلب باقة مخصصة بسعر $c_price_fmt ر.س/سنة','warning')");
                         } else {
                             $pkg_label = $pkg['name'] ?? '';
                             $conn->query("INSERT INTO notifications(title,message,type)
@@ -307,12 +308,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $page_title = 'تسجيل مكتب جديد | '.sc($conn,'site_name','Mehkam');
-$packages_q = $conn->query("SELECT * FROM packages WHERE is_active=1 ORDER BY price_monthly ASC");
+$packages_q = $conn->query("SELECT * FROM packages WHERE is_active=1 ORDER BY price_yearly ASC");
 $all_pkgs   = [];
 if ($packages_q) while($p=$packages_q->fetch_assoc()) $all_pkgs[] = $p;
 
 // كشف وجود باقة مخصصة (سعرها 0) في القائمة
-foreach ($all_pkgs as $_ap) { if ((float)$_ap['price_monthly'] == 0) { $has_custom_in_list = true; break; } }
+foreach ($all_pkgs as $_ap) { if ((float)$_ap['price_yearly'] == 0) { $has_custom_in_list = true; break; } }
 
 include 'includes/header.php';
 ?>
@@ -1052,7 +1053,7 @@ if (_nav) _nav.classList.add('scrolled');
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
           <div class="fs-pkg-grid" id="fsPkgGrid">
             <?php foreach ($all_pkgs as $po):
-              $po_price = (float)$po['price_monthly'];
+              $po_price = (float)$po['price_yearly'];
               $is_po_custom = $po_price == 0;
             ?>
             <label class="fs-pkg-opt <?= $po['id'] == $pkg_id ? 'active' : '' ?>" id="fsPkgOpt<?= $po['id'] ?>"
@@ -1064,20 +1065,11 @@ if (_nav) _nav.classList.add('scrolled');
               <div class="fs-pkg-opt-custom"><i class="fas fa-handshake me-1"></i>بالتفاهم</div>
               <?php else: ?>
               <div class="fs-pkg-opt-price" id="fsPkgPrice<?= $po['id'] ?>">
-                <?= number_format($po['price_monthly']) ?><small> ر.س/شهر</small>
+                <?= number_format($po['price_yearly']) ?><small> ر.س/سنة</small>
               </div>
               <?php endif; ?>
             </label>
             <?php endforeach; ?>
-          </div>
-          <!-- دورة الفوترة -->
-          <div class="fs-billing-toggle" id="fsBillingWrap">
-            <button type="button" class="fs-bill-btn <?= $billing_cycle==='monthly'?'on':'' ?>" id="fsBillMonthly"
-                    onclick="fsBilling('monthly')">شهري</button>
-            <button type="button" class="fs-bill-btn <?= $billing_cycle==='yearly'?'on':'' ?>" id="fsBillYearly"
-                    onclick="fsBilling('yearly')">
-              سنوي <span style="font-size:9px;color:#16a34a;font-weight:800">وفّر</span>
-            </button>
           </div>
         </div>
 
@@ -1094,25 +1086,21 @@ if (_nav) _nav.classList.add('scrolled');
                 echo '<div class="col-12"><div class="fs-section-label" style="margin:14px 0 0"><i class="fas fa-puzzle-piece me-2"></i>موديولات إضافية</div></div>';
             }
             $fdata   = $fp[$fk] ?? null;
-            $price_m = $fdata ? (float)$fdata['price_monthly'] : 0;
-            $price_y = $fdata ? (float)$fdata['price_yearly']  : 0;
-            // السعر السنوي per-month (للعرض)
-            $price_y_pm = $price_y > 0 ? round($price_y / 12, 2) : 0;
+            $price_y = $fdata ? (float)$fdata['price_yearly'] : 0;
             $label   = $feat_label_map[$fk] ?? $fk;
             $icon    = $feat_icons_builder[$fi] ?? ($fdata['feature_icon'] ?? 'puzzle-piece');
           ?>
           <div class="col-6 col-md-4 col-lg-3">
             <label class="feat-card" id="fc_<?= $fk ?>"
                    data-key="<?= $fk ?>"
-                   data-price="<?= $price_m ?>"
                    data-price-yearly="<?= $price_y ?>"
                    onclick="toggleFeat(this)">
               <div class="feat-card-inner">
                 <div class="feat-check-badge"><i class="fas fa-check"></i></div>
                 <div class="feat-icon"><i class="fas fa-<?= $icon ?>"></i></div>
                 <div class="feat-name"><?= $label ?></div>
-                <div class="feat-price <?= $price_m == 0 ? 'feat-price-free' : '' ?>" id="fcp_<?= $fk ?>">
-                  <?= $price_m > 0 ? '+'.number_format($price_m,0).' ر.س' : 'مجاناً' ?>
+                <div class="feat-price <?= $price_y == 0 ? 'feat-price-free' : '' ?>" id="fcp_<?= $fk ?>">
+                  <?= $price_y > 0 ? '+'.number_format($price_y,0).' ر.س/سنة' : 'مجاناً' ?>
                 </div>
               </div>
             </label>
@@ -1135,8 +1123,8 @@ if (_nav) _nav.classList.add('scrolled');
                 <input type="number" id="qtyUsers" class="qty-input" value="<?= $custom_users ?>" min="1" max="50" readonly>
                 <button type="button" class="qty-btn" onclick="adjQty('Users',1)">+</button>
               </div>
-              <?php $pu = (float)($fp['per_user']['price_monthly'] ?? 0); ?>
-              <div class="qty-note"><?= $pu > 0 ? "+{$pu} ر.س / مستخدم" : 'مجاناً' ?></div>
+              <?php $pu = (float)($fp['per_user']['price_yearly'] ?? 0); ?>
+              <div class="qty-note"><?= $pu > 0 ? "+{$pu} ر.س / مستخدم / سنة" : 'مجاناً' ?></div>
             </div>
           </div>
 
@@ -1149,8 +1137,8 @@ if (_nav) _nav.classList.add('scrolled');
                 <input type="number" id="qtyCases" class="qty-input" value="<?= $custom_cases ?>" min="<?= $fp_base_c ?>" step="50" readonly>
                 <button type="button" class="qty-btn" onclick="adjQty('Cases',50)">+</button>
               </div>
-              <?php $pc = (float)($fp['per_100_cases']['price_monthly'] ?? 0); ?>
-              <div class="qty-note"><?= $pc > 0 ? "+{$pc} ر.س / كل 100" : 'مجاناً' ?></div>
+              <?php $pc = (float)($fp['per_100_cases']['price_yearly'] ?? 0); ?>
+              <div class="qty-note"><?= $pc > 0 ? "+{$pc} ر.س / كل 100 / سنة" : 'مجاناً' ?></div>
             </div>
           </div>
 
@@ -1159,13 +1147,10 @@ if (_nav) _nav.classList.add('scrolled');
         <!-- ملخص السعر (للباقة المخصصة) -->
         <div class="fs-summary" style="margin-top:24px">
           <div class="fs-price-block">
-            <div class="fs-price-label">السعر التقديري</div>
+            <div class="fs-price-label">السعر التقديري السنوي</div>
             <div style="display:flex;align-items:baseline;gap:6px">
               <span class="fs-price-num" id="totalPriceVal"><?= number_format($fp_base_p,0) ?></span>
-              <span class="fs-price-currency">ر.س / شهر</span>
-            </div>
-            <div id="totalPriceYearly" style="font-size:11px;color:rgba(255,255,255,.35);margin-top:4px">
-              أو 0 ر.س / سنوياً (وفّر 17%)
+              <span class="fs-price-currency">ر.س / سنة</span>
             </div>
             <div class="fs-price-note" style="margin-top:6px">* السعر النهائي يُحدده الفريق بعد المراجعة</div>
           </div>
@@ -1179,17 +1164,12 @@ if (_nav) _nav.classList.add('scrolled');
         <!-- ملخص الباقة العادية -->
         <div id="fsRegularSummary" class="fs-summary" style="margin-top:24px;<?= $is_custom ? 'display:none' : '' ?>">
           <div class="fs-price-block">
-            <div class="fs-price-label">سعر الباقة</div>
+            <div class="fs-price-label">سعر الباقة السنوي</div>
             <div style="display:flex;align-items:baseline;gap:8px">
               <span class="fs-price-num" id="fsRegPrice">
-                <?php if (!$is_custom && $pkg): ?>
-                  <?= $billing_cycle==='yearly' ? number_format(round($pkg['price_yearly']/12)) : number_format($pkg['price_monthly']) ?>
-                <?php else: ?>0<?php endif; ?>
+                <?= (!$is_custom && $pkg) ? number_format($pkg['price_yearly']) : '0' ?>
               </span>
-              <span class="fs-price-currency">ر.س / شهر</span>
-            </div>
-            <div class="fs-price-note" id="fsRegNote">
-              <?= (!$is_custom && $pkg && $billing_cycle==='yearly') ? 'إجمالي سنوي: '.number_format($pkg['price_yearly']).' ر.س' : '' ?>
+              <span class="fs-price-currency">ر.س / سنة</span>
             </div>
           </div>
           <div>
@@ -1281,18 +1261,7 @@ if (_nav) _nav.classList.add('scrolled');
 
               <?php if (!$is_custom): ?>
               <!-- ① الباقة -->
-              <div class="rp-section">اختيار الباقة والدورة</div>
-
-              <!-- Billing Toggle -->
-              <div class="rp-billing-wrap">
-                <button type="button" class="rp-billing-btn <?= $billing_cycle==='monthly'?'on':'' ?>" id="btnMonthly" onclick="setBilling('monthly')">
-                  <i class="fas fa-calendar-day me-1"></i>شهري
-                </button>
-                <button type="button" class="rp-billing-btn <?= $billing_cycle==='yearly'?'on':'' ?>" id="btnYearly" onclick="setBilling('yearly')">
-                  <i class="fas fa-calendar-alt me-1"></i>سنوي
-                  <span class="rp-save-badge">وفّر 17%</span>
-                </button>
-              </div>
+              <div class="rp-section">اختيار الباقة</div>
 
               <div class="rp-pkg-grid">
                 <?php foreach ($all_pkgs as $po): ?>
@@ -1302,11 +1271,8 @@ if (_nav) _nav.classList.add('scrolled');
                          onchange="selectPkg(<?= $po['id'] ?>)">
                   <div class="rp-pkg-name"><?= htmlspecialchars($po['name']) ?></div>
                   <div class="rp-pkg-price" id="pkgPrice<?= $po['id'] ?>">
-                    <?= $billing_cycle==='yearly' ? number_format(round($po['price_yearly']/12)) : number_format($po['price_monthly']) ?>
-                    <small>ر.س/شهر</small>
-                  </div>
-                  <div class="rp-pkg-billing-note" id="pkgNote<?= $po['id'] ?>" style="font-size:10px;color:#9ca3af;margin-top:2px">
-                    <?= $billing_cycle==='yearly' ? '('.number_format($po['price_yearly']).' ر.س سنوياً)' : '' ?>
+                    <?= number_format($po['price_yearly']) ?>
+                    <small>ر.س/سنة</small>
                   </div>
                 </label>
                 <?php endforeach; ?>
@@ -1455,7 +1421,7 @@ if (_nav) _nav.classList.add('scrolled');
               $bk_on = sc($conn,'bank_enabled','1')==='1';
               $pp_cid= sc($conn,'paypal_client_id','');
               $pp_mode=sc($conn,'paypal_mode','sandbox');
-              $reg_amount = $is_custom ? (float)$custom_price : ($billing_cycle==='yearly' ? (float)($pkg['price_yearly']??0) : (float)($pkg['price_monthly']??0));
+              $reg_amount = $is_custom ? (float)$custom_price : (float)($pkg['price_yearly'] ?? 0);
               // Determine default payment method
               $default_pm = $bk_on ? 'bank' : ($pm_on ? 'card' : ($pp_on ? 'paypal' : 'bank'));
               ?>
@@ -1518,16 +1484,14 @@ if (_nav) _nav.classList.add('scrolled');
                 <div class="rp-bank-row">
                   <span class="rp-bank-lbl">المبلغ المطلوب</span>
                   <span class="rp-bank-val" style="color:#c9a227" id="payAmount">
-                    <?= $billing_cycle==='yearly'
-                        ? number_format($pkg['price_yearly']).' ريال / سنة'
-                        : number_format($pkg['price_monthly']).' ريال / شهر' ?>
+                    <?= number_format($pkg['price_yearly']).' ريال / سنة' ?>
                   </span>
                 </div>
                 <?php else: ?>
                 <div class="rp-bank-row">
                   <span class="rp-bank-lbl">المبلغ المقدر</span>
                   <span class="rp-bank-val" style="color:#7c3aed" id="customPayAmount">
-                    <?= $custom_price > 0 ? number_format($custom_price, 0).' ريال / شهر' : 'يُحدد من قِبل الفريق' ?>
+                    <?= $custom_price > 0 ? number_format($custom_price, 0).' ريال / سنة' : 'يُحدد من قِبل الفريق' ?>
                   </span>
                 </div>
                 <?php endif; ?>
@@ -1661,7 +1625,7 @@ if (_nav) _nav.classList.add('scrolled');
             <div class="rp-sum-body">
               <div class="rp-sum-price">
                 <div class="sp-amount" style="color:#7c3aed" id="sumCustomAmount"><?= number_format($custom_price, 0) ?></div>
-                <div class="sp-unit">ريال سعودي / شهر (مقدر)</div>
+                <div class="sp-unit">ريال سعودي / سنة (مقدر)</div>
               </div>
               <ul class="rp-sum-feats" id="sumFeatsCustom">
                 <li><i class="fas fa-users"></i>حتى <strong><?= $custom_users ?></strong> مستخدمين</li>
@@ -1689,9 +1653,8 @@ if (_nav) _nav.classList.add('scrolled');
             </div>
             <div class="rp-sum-body">
               <div class="rp-sum-price">
-                <div class="sp-amount" id="sumAmount"><?= number_format($pkg['price_monthly'] ?? 0) ?></div>
-                <div class="sp-unit">ريال سعودي / شهر</div>
-                <div class="sp-yearly" id="sumYearly">أو <?= number_format($pkg['price_yearly'] ?? 0) ?> ر.س / سنوياً</div>
+                <div class="sp-amount" id="sumAmount"><?= number_format($pkg['price_yearly'] ?? 0) ?></div>
+                <div class="sp-unit">ريال سعودي / سنة</div>
               </div>
               <ul class="rp-sum-feats" id="sumFeatsRegular">
                 <li><i class="fas fa-check"></i><?= ((int)($pkg['max_users']??0)==0||(int)($pkg['max_users']??0)>=999) ? 'مستخدمون <strong>غير محدودين</strong>' : 'حتى <strong>'.(int)($pkg['max_users']??0).'</strong> مستخدمين' ?></li>
@@ -1723,9 +1686,7 @@ var pkgData = <?php
     $feats = array_values(array_filter(array_map('trim', explode(',', $p['features'] ?? ''))));
     $pd[$p['id']] = [
       'name'    => $p['name'],
-      'monthly' => (int)$p['price_monthly'],
       'yearly'  => (int)$p['price_yearly'],
-      'perMo'   => (int)round($p['price_yearly']/12),
       'users'   => ((int)$p['max_users']==0||(int)$p['max_users']>=999) ? 'غير محدودين' : $p['max_users'],
       'cases'   => ((int)$p['max_cases']==0||(int)$p['max_cases']>=999) ? 'غير محدودة' : $p['max_cases'],
       'features'=> $feats,
@@ -1734,41 +1695,9 @@ var pkgData = <?php
   echo json_encode($pd, JSON_UNESCAPED_UNICODE);
 ?>;
 
-var currentBilling = '<?= $billing_cycle ?>';
 var currentPkgId   = <?= $pkg_id ?>;
 /* المبلغ الحالي للدفع — يُعرَّف دائماً (خارج أي شرط PHP) حتى لا يفشل زر "التالي — الدفع" */
-var _rp_amount = <?= $is_custom
-    ? (float)$custom_price
-    : ($billing_cycle === 'yearly'
-        ? (float)($pkg['price_yearly']  ?? 0)
-        : (float)($pkg['price_monthly'] ?? 0)) ?>;
-
-function setBilling(cycle) {
-  currentBilling = cycle;
-  document.getElementById('billingCycleField').value = cycle;
-
-  // toggle buttons
-  document.getElementById('btnMonthly').classList.toggle('on', cycle === 'monthly');
-  document.getElementById('btnYearly').classList.toggle('on', cycle === 'yearly');
-
-  // update all package cards prices
-  Object.keys(pkgData).forEach(function(id) {
-    var p = pkgData[id];
-    var priceEl = document.getElementById('pkgPrice' + id);
-    var noteEl  = document.getElementById('pkgNote'  + id);
-    if (!priceEl) return;
-    if (cycle === 'yearly') {
-      priceEl.innerHTML = p.perMo.toLocaleString() + ' <small>ر.س/شهر</small>';
-      if (noteEl) noteEl.textContent = '(' + p.yearly.toLocaleString() + ' ر.س سنوياً)';
-    } else {
-      priceEl.innerHTML = p.monthly.toLocaleString() + ' <small>ر.س/شهر</small>';
-      if (noteEl) noteEl.textContent = '';
-    }
-  });
-
-  // update sidebar & payment for current package
-  updateSummary(currentPkgId);
-}
+var _rp_amount = <?= $is_custom ? (float)$custom_price : (float)($pkg['price_yearly'] ?? 0) ?>;
 
 function selectPkg(id) {
   currentPkgId = id;
@@ -1779,7 +1708,7 @@ function selectPkg(id) {
 
   // هل الباقة المختارة مخصصة (سعرها 0)؟
   var p = pkgData[id];
-  var isCustomPkg = p && p.monthly === 0;
+  var isCustomPkg = p && p.yearly === 0;
 
   var featStep    = document.getElementById('featStep');
   var mainForm    = document.getElementById('mainFormWrap');
@@ -1816,36 +1745,19 @@ function selectPkg(id) {
 function updateSummary(id) {
   var p = pkgData[id];
   if (!p) return;
-  var isYearly = currentBilling === 'yearly';
 
   // sidebar
   document.getElementById('sumName').textContent   = p.name;
-  document.getElementById('sumAmount').textContent = isYearly
-    ? Math.round(p.yearly / 12).toLocaleString()
-    : p.monthly.toLocaleString();
-
-  var yearlyEl = document.getElementById('sumYearly');
-  if (yearlyEl) {
-    yearlyEl.textContent = isYearly
-      ? 'إجمالي سنوي: ' + p.yearly.toLocaleString() + ' ر.س (وفّر 17%)'
-      : 'أو ' + p.yearly.toLocaleString() + ' ر.س / سنوياً';
-    yearlyEl.style.color = isYearly ? '#16a34a' : '#9ca3af';
-  }
-
-  var unitEl = document.querySelector('#sumRegularBlock .sp-unit');
-  if (unitEl) unitEl.textContent = isYearly ? 'ريال سعودي / شهر (مدفوع سنوياً)' : 'ريال سعودي / شهر';
+  document.getElementById('sumAmount').textContent = p.yearly.toLocaleString();
 
   // payment section — skip for custom/zero-price packages (amount managed by proceedToForm)
-  var newAmt = isYearly ? p.yearly : p.monthly;
-  if (newAmt > 0) rpSetAmount(newAmt);
+  if (p.yearly > 0) rpSetAmount(p.yearly);
 
   var paEl = document.getElementById('payAmount');
-  if (paEl) paEl.textContent = isYearly
-    ? p.yearly.toLocaleString() + ' ريال / سنة'
-    : p.monthly.toLocaleString() + ' ريال / شهر';
+  if (paEl) paEl.textContent = p.yearly.toLocaleString() + ' ريال / سنة';
 
   var pbEl = document.getElementById('payBilling');
-  if (pbEl) pbEl.textContent = isYearly ? 'سنوي (دفعة واحدة)' : 'شهري';
+  if (pbEl) pbEl.textContent = 'سنوي (دفعة واحدة)';
 
   // features
   var ul = document.getElementById('sumFeatsRegular');
@@ -1975,9 +1887,7 @@ function goToPayStep() {
   rpSetAmount(
     (typeof _rp_amount === 'number' && _rp_amount > 0)
       ? _rp_amount
-      : (pkgData[currentPkgId]
-          ? (currentBilling === 'yearly' ? pkgData[currentPkgId].yearly : pkgData[currentPkgId].monthly)
-          : 0)
+      : (pkgData[currentPkgId] ? pkgData[currentPkgId].yearly : 0)
   );
 
   /* إخفاء أي خطأ مضمّن */
@@ -2153,22 +2063,12 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 /* ══ اختيار الميزات للباقة المخصصة ══ */
-<?php if ($show_feat_step):
-  // السعر السنوي للأساس (من إعداد الأدمن)
-  $fp_base_disc = max(0, min(99, (float)(sc($conn,'custom_base_disc','0'))));
-  $fp_base_py   = $fp_base_disc > 0
-    ? round($fp_base_p * 12 * (1 - $fp_base_disc/100), 2)
-    : round($fp_base_p * 12, 2);
-?>
+<?php if ($show_feat_step): ?>
 var _featLabels  = <?= json_encode($feat_label_map, JSON_UNESCAPED_UNICODE) ?>;
-var _basePrice   = <?= (float)$fp_base_p ?>;
-var _baseYearly  = <?= (float)$fp_base_py ?>;   // السعر السنوي الفعلي للأساس
+var _baseYearly  = <?= (float)$fp_base_p ?>;   // السعر الأساسي السنوي (من إعداد الأدمن)
 var _baseUsers   = <?= (int)$fp_base_u ?>;
 var _baseCases   = <?= (int)$fp_base_c ?>;
-/* الطاقة الإضافية — شهري وسنوي */
-var _perUser         = <?= (float)($fp['per_user']['price_monthly'] ?? 0) ?>;
 var _perUserYearly   = <?= (float)($fp['per_user']['price_yearly']  ?? 0) ?>;
-var _per100Cases     = <?= (float)($fp['per_100_cases']['price_monthly'] ?? 0) ?>;
 var _per100CasesY    = <?= (float)($fp['per_100_cases']['price_yearly']  ?? 0) ?>;
 var _selectedFeats = {};
 /* _rp_amount مُعرَّف مسبقاً بالأعلى — هنا إعادة ضبط بقيمة خطوة الدفع الفعلية */
@@ -2195,73 +2095,43 @@ function adjQty(type, delta) {
 }
 
 function calcTotal() {
-  var isYearly     = _fsBilling === 'yearly';
-  var totalMonthly = _basePrice;
-  var totalYearly  = _baseYearly;
+  var totalYearly = _baseYearly;
 
-  // أسعار الميزات — نقرأ data-price (شهري) و data-price-yearly (سنوي) من البطاقة
+  // أسعار الميزات — السعر السنوي من data-price-yearly على البطاقة
   Object.keys(_selectedFeats).forEach(function(k) {
     var card = document.getElementById('fc_' + k);
     if (!card) return;
-    var pm = parseFloat(card.dataset.price)       || 0;
-    var py = parseFloat(card.dataset.priceYearly) || 0;
-    // إذا لم يُحدد السنوي في DB استخدم شهري×12
-    if (py === 0 && pm > 0) py = pm * 12;
-    totalMonthly += pm;
-    totalYearly  += py;
+    totalYearly += parseFloat(card.dataset.priceYearly) || 0;
   });
 
   // مستخدمون إضافيون
   var users = parseInt(document.getElementById('qtyUsers').value) || _baseUsers;
   var extraUsers = Math.max(0, users - _baseUsers);
-  if (extraUsers > 0) {
-    totalMonthly += extraUsers * _perUser;
-    var puY = _perUserYearly > 0 ? _perUserYearly : _perUser * 12;
-    totalYearly  += extraUsers * puY;
-  }
+  if (extraUsers > 0) totalYearly += extraUsers * _perUserYearly;
 
   // قضايا إضافية
   var cases = parseInt(document.getElementById('qtyCases').value) || _baseCases;
   var extraCaseUnits = Math.ceil(Math.max(0, cases - _baseCases) / 100);
-  if (extraCaseUnits > 0) {
-    totalMonthly += extraCaseUnits * _per100Cases;
-    var pcY = _per100CasesY > 0 ? _per100CasesY : _per100Cases * 12;
-    totalYearly  += extraCaseUnits * pcY;
-  }
+  if (extraCaseUnits > 0) totalYearly += extraCaseUnits * _per100CasesY;
 
-  totalMonthly = Math.round(totalMonthly);
-  totalYearly  = Math.round(totalYearly);
-  var displayMonthly = isYearly ? Math.round(totalYearly / 12) : totalMonthly;
+  totalYearly = Math.round(totalYearly);
 
   var priceEl = document.getElementById('totalPriceVal');
-  if (priceEl) priceEl.textContent = displayMonthly.toLocaleString('ar-SA');
+  if (priceEl) priceEl.textContent = totalYearly.toLocaleString('ar-SA');
 
-  var yearlyEl = document.getElementById('totalPriceYearly');
-  if (yearlyEl) {
-    if (isYearly) {
-      yearlyEl.textContent = 'إجمالي سنوي: ' + totalYearly.toLocaleString('ar-SA') + ' ر.س';
-      yearlyEl.style.color = '#4ade80';
-    } else {
-      yearlyEl.textContent = 'أو ' + totalYearly.toLocaleString('ar-SA') + ' ر.س / سنوياً';
-      yearlyEl.style.color = 'rgba(255,255,255,.35)';
-    }
-  }
-
-  window._customPriceMonthly = totalMonthly;
-  window._customPriceYearly  = totalYearly;
+  window._customPriceYearly = totalYearly;
 
   // تحديث الشريط الجانبي مباشرةً (بدون شرط > 0)
-  var amtForPay = isYearly ? totalYearly : totalMonthly;
   var scEl = document.getElementById('sumCustomAmount');
-  if (scEl) scEl.textContent = amtForPay.toLocaleString('ar-SA');
+  if (scEl) scEl.textContent = totalYearly.toLocaleString('ar-SA');
 
   var caEl = document.getElementById('customPayAmount');
-  if (caEl) caEl.textContent = amtForPay.toLocaleString('ar-SA') + ' ريال / شهر (مقدر)';
+  if (caEl) caEl.textContent = totalYearly.toLocaleString('ar-SA') + ' ريال / سنة (مقدر)';
 
   var hcp = document.getElementById('hidCustomPrice');
-  if (hcp) hcp.value = amtForPay;
+  if (hcp) hcp.value = totalYearly;
 
-  if (amtForPay > 0) rpSetAmount(amtForPay);
+  if (totalYearly > 0) rpSetAmount(totalYearly);
 
   // Feature tags display
   var disp = document.getElementById('selectedFeatsDisplay');
@@ -2285,17 +2155,14 @@ function proceedToForm() {
     var featsArr = Object.keys(_selectedFeats);
     var users   = parseInt(document.getElementById('qtyUsers').value);
     var cases   = parseInt(document.getElementById('qtyCases').value);
-    // السعر المخزّن من calcTotal (شهري أو سنوي حسب الدورة)
-    var monthlyPrice = window._customPriceMonthly || 0;
-    var yearlyPrice  = window._customPriceYearly  || 0;
-    price = _fsBilling === 'yearly' ? yearlyPrice : monthlyPrice;
+    // السعر المخزّن من calcTotal (سنوي دائماً)
+    price = window._customPriceYearly || 0;
 
     document.getElementById('hidCustomFeat').value    = featsArr.join(',');
     document.getElementById('hidCustomUsers').value   = users;
     document.getElementById('hidCustomCases').value   = cases;
     document.getElementById('hidCustomStorage').value = 0;
-    document.getElementById('hidCustomPrice').value   = monthlyPrice;
-    document.getElementById('billingCycleField').value = _fsBilling;
+    document.getElementById('hidCustomPrice').value   = price;
 
     // تحديث الشريط الجانبي للباقة المخصصة
     var sumCustom  = document.getElementById('sumCustomBlock');
@@ -2303,7 +2170,7 @@ function proceedToForm() {
     if (sumCustom)  sumCustom.style.display  = '';
     if (sumRegular) sumRegular.style.display = 'none';
     var sumAmt = document.getElementById('sumCustomAmount');
-    if (sumAmt) sumAmt.textContent = monthlyPrice.toLocaleString('ar-SA', {maximumFractionDigits:0});
+    if (sumAmt) sumAmt.textContent = price.toLocaleString('ar-SA', {maximumFractionDigits:0});
     var sumList = document.getElementById('sumFeatsCustom');
     if (sumList) {
       var html = '<li><i class="fas fa-users"></i>حتى <strong>'+users+'</strong> مستخدمين</li>'
@@ -2315,11 +2182,8 @@ function proceedToForm() {
       sumList.innerHTML = html;
     }
   } else {
-    // باقة عادية: تحديث billing
-    document.getElementById('billingCycleField').value = _fsBilling;
-    if (typeof setBilling === 'function') setBilling(_fsBilling);
     var p = pkgData[currentPkgId];
-    if (p) price = _fsBilling === 'yearly' ? p.yearly : p.monthly;
+    if (p) price = p.yearly;
   }
 
   // تحديث مبلغ الدفع
@@ -2338,48 +2202,7 @@ function proceedToForm() {
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
-/* ── تبديل الباقة داخل featStep ── */
-var _fsBilling = '<?= $billing_cycle ?>';
-
-function fsBilling(cycle) {
-  _fsBilling = cycle;
-  document.getElementById('fsBillMonthly').classList.toggle('on', cycle === 'monthly');
-  document.getElementById('fsBillYearly').classList.toggle('on', cycle === 'yearly');
-  // تحديث سعر كل ميزة في الشبكة (استخدام الأسعار الفعلية من data attributes)
-  document.querySelectorAll('.feat-card[data-key]').forEach(function(card) {
-    var pm = parseFloat(card.dataset.price)       || 0;
-    var py = parseFloat(card.dataset.priceYearly) || 0;
-    var priceEl = card.querySelector('.feat-price');
-    if (!priceEl || pm === 0) return;
-    if (cycle === 'yearly') {
-      var pypm = py > 0 ? Math.round(py / 12) : Math.round(pm);
-      priceEl.textContent = '+' + pypm.toLocaleString('ar-SA') + ' ر.س';
-    } else {
-      priceEl.textContent = '+' + Math.round(pm).toLocaleString('ar-SA') + ' ر.س';
-    }
-  });
-  // تحديث السعر المعروض للباقات
-  Object.keys(pkgData).forEach(function(id) {
-    var p = pkgData[id];
-    var el = document.getElementById('fsPkgPrice' + id);
-    if (el && p.monthly > 0) {
-      var shown = cycle === 'yearly' ? Math.round(p.yearly / 12) : p.monthly;
-      el.innerHTML = shown.toLocaleString() + '<small> ر.س/شهر</small>';
-    }
-  });
-  // تحديث ملخص الباقة العادية أو المخصصة
-  var activePkg = pkgData[currentPkgId];
-  var isCustomActive = document.getElementById('hidIsCustom') && document.getElementById('hidIsCustom').value === '1';
-  if (isCustomActive) {
-    // إعادة حساب السعر المخصص مع مراعاة الدورة الجديدة
-    if (typeof calcTotal === 'function') calcTotal();
-  } else if (activePkg && activePkg.monthly > 0) {
-    fsUpdateRegularSummary(currentPkgId, cycle);
-  }
-  // مزامنة مع الـ billing الرئيسي
-  if (typeof setBilling === 'function') setBilling(cycle);
-}
-
+/* ── اختيار باقة داخل featStep ── */
 function fsPkgSelect(id, isCustom) {
   // تحديث التحديد المرئي
   document.querySelectorAll('.fs-pkg-opt').forEach(function(el){ el.classList.remove('active'); });
@@ -2393,7 +2216,6 @@ function fsPkgSelect(id, isCustom) {
 
   var customSection = document.getElementById('fsCustomSection');
   var regularSummary = document.getElementById('fsRegularSummary');
-  var billingWrap = document.getElementById('fsBillingWrap');
 
   if (isCustom) {
     if (customSection)   customSection.style.display   = '';
@@ -2402,22 +2224,19 @@ function fsPkgSelect(id, isCustom) {
   } else {
     if (customSection)   customSection.style.display   = 'none';
     if (regularSummary)  regularSummary.style.display  = '';
-    fsUpdateRegularSummary(id, _fsBilling);
+    fsUpdateRegularSummary(id);
     // مسح الميزات المخصصة
     var hf = document.getElementById('hidCustomFeat');  if (hf) hf.value = '';
     var hp = document.getElementById('hidCustomPrice'); if (hp) hp.value = '0';
   }
 }
 
-function fsUpdateRegularSummary(id, cycle) {
+function fsUpdateRegularSummary(id) {
   var p = pkgData[id];
   if (!p) return;
-  var price = cycle === 'yearly' ? Math.round(p.yearly / 12) : p.monthly;
   var priceEl = document.getElementById('fsRegPrice');
-  var noteEl  = document.getElementById('fsRegNote');
   var featsEl = document.getElementById('fsRegFeats');
-  if (priceEl) priceEl.textContent = price.toLocaleString();
-  if (noteEl)  noteEl.textContent  = cycle === 'yearly' ? 'إجمالي سنوي: ' + p.yearly.toLocaleString() + ' ر.س' : '';
+  if (priceEl) priceEl.textContent = p.yearly.toLocaleString();
   if (featsEl) {
     featsEl.innerHTML = '';
     p.features.forEach(function(f) {
@@ -2430,7 +2249,7 @@ function fsUpdateRegularSummary(id, cycle) {
       featsEl.innerHTML = '<span class="fs-tag-empty">—</span>';
     }
   }
-  rpSetAmount(cycle === 'yearly' ? p.yearly : p.monthly);
+  rpSetAmount(p.yearly);
 }
 
 // تهيئة العرض
@@ -2444,8 +2263,8 @@ _selectedFeats[<?= json_encode(trim($cfk)) ?>] = true;
 calcTotal();
 <?php else: ?>
 // تهيئة ملخص الباقة العادية
-if (pkgData[currentPkgId] && pkgData[currentPkgId].monthly > 0) {
-  fsUpdateRegularSummary(currentPkgId, _fsBilling);
+if (pkgData[currentPkgId] && pkgData[currentPkgId].yearly > 0) {
+  fsUpdateRegularSummary(currentPkgId);
 }
 <?php endif; ?>
 <?php endif; ?>
@@ -2468,14 +2287,13 @@ function rpSetAmount(amount) {
   // Bank transfer — regular package row
   var paEl = document.getElementById('payAmount');
   if (paEl && amount > 0) {
-    var isYearly = currentBilling === 'yearly';
-    paEl.textContent = fmt + (isYearly ? ' ريال / سنة' : ' ريال / شهر');
+    paEl.textContent = fmt + ' ريال / سنة';
   }
 
   // Bank transfer — custom package estimated amount
   var caEl = document.getElementById('customPayAmount');
   if (caEl && amount > 0) {
-    caEl.textContent = fmt + ' ريال / شهر (مقدر)';
+    caEl.textContent = fmt + ' ريال / سنة (مقدر)';
   }
 
   // Sidebar summary — custom package price

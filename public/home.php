@@ -5,7 +5,7 @@ $_site_name_p=sc($conn,'site_name','OLFS');
 $page_title=$_site_name_p.' — نظام إدارة مكاتب المحاماة الأذكى';
 $page_desc=sc($conn,'site_name','OLFS').' — منصة رائدة لإدارة مكاتب المحاماة في المملكة العربية السعودية';
 $pkgs=[];
-$res=$conn->query("SELECT * FROM packages WHERE is_active=1 ORDER BY price_monthly ASC");
+$res=$conn->query("SELECT * FROM packages WHERE is_active=1 ORDER BY price_yearly ASC");
 if($res) while($p=$res->fetch_assoc()) $pkgs[]=$p;
 $oc=(int)($conn->query("SELECT COUNT(*) c FROM offices WHERE status='active'")->fetch_assoc()['c']??47);
 $cc=(int)($conn->query("SELECT COUNT(*) c FROM cases")->fetch_assoc()['c']??1800);
@@ -177,16 +177,6 @@ include 'includes/header.php';
     </div>
 
     <?php if (!empty($pkgs)): ?>
-    <!-- Billing Toggle -->
-    <div class="text-center mb-5 reveal">
-      <div class="lx-billing">
-        <div class="lx-billing-opt on" id="home-lbl-mo" onclick="homeToggleBilling()">شهري</div>
-        <div class="lx-billing-opt" id="home-lbl-yr" onclick="homeToggleBilling()">
-          سنوي <span class="lx-save">وفّر 17%</span>
-        </div>
-      </div>
-    </div>
-
     <!-- Packages Grid -->
     <div class="row g-4 justify-content-center">
       <?php
@@ -198,8 +188,7 @@ include 'includes/header.php';
       foreach ($pkgs as $i => $p):
         $featured = ($i == 1);
         $features = array_filter(array_map('trim', explode(',', $p['features'] ?? '')));
-        $mo       = (int) $p['price_monthly'];
-        $yr       = (int) round($p['price_yearly'] / 12);
+        $yr       = (int) $p['price_yearly'];
         $btn_cls  = $btn_classes[$i] ?? 'lx-pbtn-out';
         $pkg_bg   = $pkg_bgs[$i]    ?? '#334155';
         $pkg_icon = $pkg_icons[$i]  ?? 'box';
@@ -218,13 +207,9 @@ include 'includes/header.php';
               <div class="lx-pname"><?= e($p['name']) ?></div>
             </div>
             <div class="lx-pprice">
-              <span class="lx-pamount lpa" data-m="<?= $mo ?>" data-y="<?= $yr ?>"><?= $mo ?></span>
+              <span class="lx-pamount"><?= number_format($yr) ?></span>
               <span class="lx-pcur">ر.س</span>
-              <span class="lx-pper">/ شهر</span>
-            </div>
-            <div class="lx-pyearly">
-              أو <?= number_format($p['price_yearly']) ?> ر.س سنوياً
-              <span class="save">وفّر 17%</span>
+              <span class="lx-pper">/ سنة</span>
             </div>
           </div>
           <div class="lx-psep"></div>
@@ -256,17 +241,6 @@ include 'includes/header.php';
   </div>
 </section>
 
-<script>
-var _homeBillingYearly = false;
-function homeToggleBilling() {
-  _homeBillingYearly = !_homeBillingYearly;
-  document.getElementById('home-lbl-mo').classList.toggle('on', !_homeBillingYearly);
-  document.getElementById('home-lbl-yr').classList.toggle('on',  _homeBillingYearly);
-  document.querySelectorAll('.lpa').forEach(function(el) {
-    el.textContent = _homeBillingYearly ? el.dataset.y : el.dataset.m;
-  });
-}
-</script>
 
 <!-- ═══ TESTIMONIALS ═══ -->
 <section class="lx-sec">

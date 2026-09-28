@@ -320,7 +320,7 @@ if ($office['subscription_end']) {
 }
 
 // جميع الباقات للترقية
-$all_packages = $conn->query("SELECT * FROM packages WHERE is_active=1 ORDER BY price_monthly ASC");
+$all_packages = $conn->query("SELECT * FROM packages WHERE is_active=1 ORDER BY price_yearly ASC");
 
 // طلب الباقة المعلق
 $pending_request = $conn->query("SELECT pr.*,p.name req_pkg_name FROM package_requests pr LEFT JOIN packages p ON pr.requested_package_id=p.id WHERE pr.office_id=$oid ORDER BY pr.created_at DESC LIMIT 1")->fetch_assoc();
@@ -799,7 +799,7 @@ function tgLink(btn){
         <div style="font-size:13px">
           <div class="d-flex justify-content-between mb-2">
             <span class="text-muted">سعر الباقة:</span>
-            <span class="fw-bold"><?= number_format($office['price_monthly'] ?? 0) ?> ر.س/شهر</span>
+            <span class="fw-bold"><?= number_format($office['price_yearly'] ?? 0) ?> ر.س/سنة</span>
           </div>
           <div class="d-flex justify-content-between mb-2">
             <span class="text-muted">المدينة:</span>
@@ -935,8 +935,8 @@ function tgLink(btn){
                   <i class="fas fa-<?=$ic?>" style="color:#fff;font-size:18px"></i>
                 </div>
                 <h6 class="fw-bold mb-1" style="font-size:14px"><?= e($pkg['name']) ?></h6>
-                <div style="font-size:22px;font-weight:900;color:var(--mk-t1)"><?= (int)$pkg['price_monthly'] ?></div>
-                <div style="font-size:11px;color:var(--mk-t4)">ر.س / شهر</div>
+                <div style="font-size:22px;font-weight:900;color:var(--mk-t1)"><?= (int)$pkg['price_yearly'] ?></div>
+                <div style="font-size:11px;color:var(--mk-t4)">ر.س / سنة</div>
                 <hr style="margin:10px 0">
                 <ul class="list-unstyled mb-0" style="font-size:12px;text-align:right;line-height:2">
                   <li><i class="fas fa-users text-primary" style="width:16px;text-align:center;margin-left:6px"></i><?= ((int)$pkg['max_users']==0||(int)$pkg['max_users']>=999) ? 'مستخدمون غير محدودين' : 'حتى '.(int)$pkg['max_users'].' مستخدمين' ?></li>
@@ -1013,15 +1013,15 @@ function tgLink(btn){
                   <div class="col-sm-6">
                     <label class="feat-lbl d-flex align-items-center gap-2 p-2 rounded border"
                            style="cursor:pointer;transition:.15s;border-color:#e5e7eb !important"
-                           data-pm="<?= (float)$f['price_monthly'] ?>" data-py="<?= (float)$f['price_yearly'] ?>">
+                           data-py="<?= (float)$f['price_yearly'] ?>">
                       <input type="checkbox" class="custom-feat-chk" data-key="<?= $fk ?>"
                              style="width:16px;height:16px;accent-color:#7c3aed;cursor:pointer;flex-shrink:0"
                              onchange="calcCustom()">
                       <i class="fas fa-<?= e($f['feature_icon']) ?>" style="color:#7c3aed;width:14px;text-align:center;flex-shrink:0"></i>
                       <div style="flex:1;min-width:0">
                         <div style="font-size:12px;font-weight:600;line-height:1.3"><?= e($f['feature_label']) ?></div>
-                        <?php if ((float)$f['price_monthly'] > 0): ?>
-                        <div style="font-size:10px;color:#7c3aed"><?= number_format((float)$f['price_monthly'],0) ?> ر.س/شهر</div>
+                        <?php if ((float)$f['price_yearly'] > 0): ?>
+                        <div style="font-size:10px;color:#7c3aed"><?= number_format((float)$f['price_yearly'],0) ?> ر.س/سنة</div>
                         <?php endif; ?>
                       </div>
                     </label>
@@ -1044,8 +1044,8 @@ function tgLink(btn){
                                class="form-control form-control-sm" style="width:85px" oninput="calcCustom()">
                         <div style="font-size:11px;color:#64748b;flex:1">
                           أساسي: <?= $fp_base_users ?>
-                          <?php if (!empty($fp['per_user']) && (float)$fp['per_user']['price_monthly'] > 0): ?>
-                          <br>إضافي: <strong><?= number_format((float)$fp['per_user']['price_monthly'],0) ?> ر.س/مستخدم/شهر</strong>
+                          <?php if (!empty($fp['per_user']) && (float)$fp['per_user']['price_yearly'] > 0): ?>
+                          <br>إضافي: <strong><?= number_format((float)$fp['per_user']['price_yearly'],0) ?> ر.س/مستخدم/سنة</strong>
                           <?php endif; ?>
                         </div>
                       </div>
@@ -1060,8 +1060,8 @@ function tgLink(btn){
                                class="form-control form-control-sm" style="width:85px" oninput="calcCustom()">
                         <div style="font-size:11px;color:#64748b;flex:1">
                           أساسي: <?= $fp_base_cases ?>
-                          <?php if (!empty($fp['per_100_cases']) && (float)$fp['per_100_cases']['price_monthly'] > 0): ?>
-                          <br>إضافي: <strong><?= number_format((float)$fp['per_100_cases']['price_monthly'],0) ?> ر.س/100 قضية</strong>
+                          <?php if (!empty($fp['per_100_cases']) && (float)$fp['per_100_cases']['price_yearly'] > 0): ?>
+                          <br>إضافي: <strong><?= number_format((float)$fp['per_100_cases']['price_yearly'],0) ?> ر.س/100 قضية/سنة</strong>
                           <?php endif; ?>
                         </div>
                       </div>
@@ -1069,9 +1069,9 @@ function tgLink(btn){
 
                     <!-- عرض السعر -->
                     <div style="background:linear-gradient(135deg,#7c3aed,#a855f7);border-radius:10px;padding:14px 16px;color:#fff;text-align:center">
-                      <div style="font-size:11px;opacity:.8;margin-bottom:2px">السعر الشهري المقدر</div>
+                      <div style="font-size:11px;opacity:.8;margin-bottom:2px">السعر السنوي المقدر</div>
                       <div style="font-size:30px;font-weight:900;line-height:1.1" id="custom_price_display">0</div>
-                      <div style="font-size:11px;opacity:.8">ر.س / شهر</div>
+                      <div style="font-size:11px;opacity:.8">ر.س / سنة</div>
                       <div style="font-size:10px;opacity:.65;margin-top:4px">* السعر النهائي يُحدده الإدارة عند الموافقة</div>
                     </div>
 
@@ -1375,7 +1375,7 @@ function cancelPick() {
 }
 
 /* ── الباقة المخصصة ── */
-var _fp_pm  = <?= json_encode(array_map('floatval', array_column($fp, 'price_monthly', 'feature_key'))) ?>;
+var _fp_py  = <?= json_encode(array_map('floatval', array_column($fp, 'price_yearly', 'feature_key'))) ?>;
 var _fp_lbl = <?= json_encode(array_column($fp, 'feature_label', 'feature_key')) ?>;
 var _fp_base_users   = <?= $fp_base_users ?>;
 var _fp_base_cases   = <?= $fp_base_cases ?>;
@@ -1409,7 +1409,7 @@ function calcCustom() {
   document.querySelectorAll('.custom-feat-chk').forEach(function(chk) {
     var lbl = chk.closest('.feat-lbl');
     if (chk.checked) {
-      total += parseFloat(lbl.dataset.pm || 0);
+      total += parseFloat(lbl.dataset.py || 0);
       var key = chk.dataset.key;
       if (_fp_lbl[key]) selLabels.push(_fp_lbl[key]);
       lbl.style.borderColor = '#7c3aed';
@@ -1426,8 +1426,8 @@ function calcCustom() {
   var extra_users    = Math.max(0, users - _fp_base_users);
   var extra_100cases = Math.ceil(Math.max(0, cases - _fp_base_cases) / 100);
 
-  if (_fp_pm['per_user'])     total += extra_users    * (_fp_pm['per_user'] || 0);
-  if (_fp_pm['per_100_cases'])total += extra_100cases * (_fp_pm['per_100_cases'] || 0);
+  if (_fp_py['per_user'])     total += extra_users    * (_fp_py['per_user'] || 0);
+  if (_fp_py['per_100_cases'])total += extra_100cases * (_fp_py['per_100_cases'] || 0);
 
   total = Math.max(0, Math.round(total * 100) / 100);
 

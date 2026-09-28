@@ -37,7 +37,7 @@ $defaults = [
     ['has_api',            'API',                     'code',                  10],
     ['has_precedents',     'السوابق القضائية',         'scale-balanced',        11],
     ['has_digital_services','الخدمات الرقمية',         'hand-holding-dollar',   12],
-    ['per_user',           'إضافة مستخدم (شهرياً)',   'user-plus',             21],
+    ['per_user',           'إضافة مستخدم (سنوياً)',   'user-plus',             21],
     ['per_100_cases',      'كل 100 قضية إضافية',      'gavel',                 22],
     ['per_512mb',          'كل 512 MB تخزين',         'hdd',                   23],
 ];
@@ -69,32 +69,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(['ok'=>true,'active'=>$newval]); exit;
     }
 
-    /* حفظ التسعير الكامل */
-    foreach ($_POST['pm'] ?? [] as $key => $pm) {
-        $k    = $conn->real_escape_string($key);
-        $pm   = max(0, (float)$pm);
-        $disc = max(0, min(99, (float)($_POST['disc'][$key] ?? 0)));
-        /* السعر السنوي = شهري×12 مع تطبيق الخصم إن وُجد */
-        $py   = $disc > 0 ? round($pm * 12 * (1 - $disc / 100), 2) : $pm * 12;
-        $conn->query("UPDATE feature_prices
-            SET price_monthly=$pm, price_yearly=$py, discount_pct=$disc
-            WHERE feature_key='$k'");
+    /* حفظ التسعير الكامل — سعر سنوي مباشر لكل ميزة، بلا احتساب من شهري */
+    foreach ($_POST['py'] ?? [] as $key => $py) {
+        $k  = $conn->real_escape_string($key);
+        $py = max(0, (float)$py);
+        $conn->query("UPDATE feature_prices SET price_yearly=$py WHERE feature_key='$k'");
     }
 
-    /* القيم الأساسية */
+    /* القيم الأساسية — السعر الأساسي سنوي مباشرةً */
     $base_users = max(1, (int)($_POST['base_users_val'] ?? 3));
     $base_cases = max(1, (int)($_POST['base_cases_val'] ?? 50));
     $base_price = max(0, (float)($_POST['base_price'] ?? 0));
-    $base_disc  = max(0, min(99, (float)($_POST['base_disc'] ?? 0)));
-    $base_py    = $base_disc > 0 ? round($base_price * 12 * (1 - $base_disc/100), 2) : $base_price * 12;
     $conn->query("INSERT INTO site_content (setting_key,setting_value) VALUES ('custom_base_users','$base_users')
         ON DUPLICATE KEY UPDATE setting_value='$base_users'");
     $conn->query("INSERT INTO site_content (setting_key,setting_value) VALUES ('custom_base_cases','$base_cases')
         ON DUPLICATE KEY UPDATE setting_value='$base_cases'");
     $conn->query("INSERT INTO site_content (setting_key,setting_value) VALUES ('custom_base_price','$base_price')
         ON DUPLICATE KEY UPDATE setting_value='$base_price'");
-    $conn->query("INSERT INTO site_content (setting_key,setting_value) VALUES ('custom_base_disc','$base_disc')
-        ON DUPLICATE KEY UPDATE setting_value='$base_disc'");
 
     header("Location: feature_pricing.php?msg=saved"); exit;
 }
@@ -120,7 +111,7 @@ include '../includes/admin_header.php';
 /* ── Feature Pricing Page ── */
 .fp-feat-row {
   display: grid;
-  grid-template-columns: 1fr 150px 130px 90px 110px;
+  grid-template-columns: 1fr 170px 90px;
   align-items: center;
   gap: 10px;
   padding: 12px 18px;
@@ -160,7 +151,7 @@ include '../includes/admin_header.php';
 
 .fp-sect-hdr {
   display: grid;
-  grid-template-columns: 1fr 150px 130px 90px 110px;
+  grid-template-columns: 1fr 170px 90px;
   gap: 10px;
   padding: 8px 18px;
   background: #f8fafc;
@@ -235,15 +226,15 @@ include '../includes/admin_header.php';
         <!-- ── صف التسعير ── -->
         <div class="row g-3 align-items-stretch mb-3">
 
-          <!-- السعر الشهري -->
-          <div class="col-sm-4">
+          <!-- السعر الأساسي السنوي -->
+          <div class="col-sm-6">
             <div style="border:1.5px solid #dbeafe;border-radius:12px;background:#fff;padding:14px 16px;height:100%">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
                 <span style="width:32px;height:32px;border-radius:9px;background:#eff6ff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
                   <i class="fas fa-coins" style="color:#2563eb;font-size:14px"></i>
                 </span>
                 <div>
-                  <div style="font-size:12px;font-weight:700;color:#1e3a8a">السعر الشهري</div>
+                  <div style="font-size:12px;font-weight:700;color:#1e3a8a">السعر الأساسي السنوي</div>
                   <div style="font-size:11px;color:#94a3b8">قبل إضافة الميزات</div>
                 </div>
               </div>
@@ -251,78 +242,19 @@ include '../includes/admin_header.php';
                 <input type="number" name="base_price" id="base_price_inp"
                        class="form-control form-control-lg"
                        value="<?= $base_price ?>" min="0" step="0.01"
-                       oninput="calcBaseYearly()"
+                       oninput="updatePreview()"
                        style="font-size:20px;font-weight:800;color:#1e293b;text-align:center">
-                <span class="input-group-text fw-bold" style="background:#eff6ff;color:#2563eb;border-color:#dbeafe">ر.س</span>
+                <span class="input-group-text fw-bold" style="background:#eff6ff;color:#2563eb;border-color:#dbeafe">ر.س / سنة</span>
+              </div>
+              <div style="font-size:10.5px;color:#f59e0b;margin-top:8px">
+                <i class="fas fa-triangle-exclamation me-1"></i>هذه القيمة أصبحت سعراً سنوياً مباشراً (كانت شهرية سابقاً) — تأكّد أنها محدَّثة.
               </div>
             </div>
           </div>
 
-          <!-- الخصم -->
+          <!-- الحدود -->
           <div class="col-sm-3">
-            <div style="border:1.5px solid #dcfce7;border-radius:12px;background:#fff;padding:14px 16px;height:100%">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-                <span style="width:32px;height:32px;border-radius:9px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                  <i class="fas fa-percent" style="color:#16a34a;font-size:13px"></i>
-                </span>
-                <div>
-                  <div style="font-size:12px;font-weight:700;color:#14532d">خصم سنوي</div>
-                  <div style="font-size:11px;color:#94a3b8">اختياري — 0 = بدون خصم</div>
-                </div>
-              </div>
-              <div class="input-group">
-                <input type="number" name="base_disc" id="base_disc_inp"
-                       class="form-control form-control-lg"
-                       value="<?= $base_disc ?>" min="0" max="99" step="0.5"
-                       placeholder="0" oninput="calcBaseYearly()"
-                       style="font-size:20px;font-weight:800;color:#1e293b;text-align:center">
-                <span class="input-group-text fw-bold" style="background:#f0fdf4;color:#16a34a;border-color:#dcfce7">%</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- الناتج السنوي -->
-          <div class="col-sm-5">
-            <div id="base_yearly_card"
-                 style="border:1.5px solid <?= $base_disc > 0 ? '#86efac' : '#e2e8f0' ?>;border-radius:12px;background:<?= $base_disc > 0 ? '#f0fdf4' : '#f8fafc' ?>;padding:14px 16px;height:100%;display:flex;flex-direction:column;justify-content:space-between">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-                <div style="display:flex;align-items:center;gap:8px">
-                  <span style="width:32px;height:32px;border-radius:9px;background:<?= $base_disc > 0 ? '#dcfce7' : '#f1f5f9' ?>;display:flex;align-items:center;justify-content:center;flex-shrink:0" id="base_yearly_icon_wrap">
-                    <i class="fas fa-calendar-check" id="base_yearly_icon" style="color:<?= $base_disc > 0 ? '#16a34a' : '#94a3b8' ?>;font-size:14px"></i>
-                  </span>
-                  <div>
-                    <div style="font-size:12px;font-weight:700;color:#374151">الإجمالي السنوي</div>
-                    <div style="font-size:11px;color:#94a3b8">محسوب تلقائياً</div>
-                  </div>
-                </div>
-                <?php if ($base_disc > 0): ?>
-                <span id="base_disc_badge" style="font-size:11px;font-weight:700;background:#dcfce7;color:#15803d;padding:3px 10px;border-radius:20px">
-                  وفّر <?= (int)$base_disc ?>%
-                </span>
-                <?php else: ?>
-                <span id="base_disc_badge" style="font-size:11px;font-weight:700;background:#f1f5f9;color:#94a3b8;padding:3px 10px;border-radius:20px;display:none"></span>
-                <?php endif; ?>
-              </div>
-              <?php
-              $by = $base_disc > 0 ? round($base_price * 12 * (1-$base_disc/100)) : round($base_price * 12);
-              ?>
-              <div style="display:flex;align-items:baseline;gap:6px">
-                <span id="base_yearly_badge" style="font-size:26px;font-weight:900;color:<?= $base_disc > 0 ? '#15803d' : '#64748b' ?>">
-                  <?= number_format($by) ?>
-                </span>
-                <span style="font-size:14px;font-weight:600;color:#94a3b8">ر.س / سنة</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ── فاصل ── -->
-        <hr style="border-color:#e8edf5;margin:4px 0 16px">
-
-        <!-- ── صف الحدود ── -->
-        <div class="row g-3">
-          <div class="col-sm-4">
-            <div style="border:1.5px solid #ede9fe;border-radius:12px;background:#fff;padding:14px 16px">
+            <div style="border:1.5px solid #ede9fe;border-radius:12px;background:#fff;padding:14px 16px;height:100%">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                 <span style="width:30px;height:30px;border-radius:8px;background:#ede9fe;display:flex;align-items:center;justify-content:center;flex-shrink:0">
                   <i class="fas fa-users" style="color:#7c3aed;font-size:12px"></i>
@@ -337,8 +269,8 @@ include '../includes/admin_header.php';
               <div style="font-size:10px;color:#94a3b8;margin-top:6px">مشمولون بالسعر الأساسي</div>
             </div>
           </div>
-          <div class="col-sm-4">
-            <div style="border:1.5px solid #fef3c7;border-radius:12px;background:#fff;padding:14px 16px">
+          <div class="col-sm-3">
+            <div style="border:1.5px solid #fef3c7;border-radius:12px;background:#fff;padding:14px 16px;height:100%">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                 <span style="width:30px;height:30px;border-radius:8px;background:#fef3c7;display:flex;align-items:center;justify-content:center;flex-shrink:0">
                   <i class="fas fa-gavel" style="color:#d97706;font-size:12px"></i>
@@ -351,16 +283,6 @@ include '../includes/admin_header.php';
                 <span class="input-group-text" style="background:#fef3c7;color:#d97706;font-size:11px;border-color:#fde68a">قضية</span>
               </div>
               <div style="font-size:10px;color:#94a3b8;margin-top:6px">مشمولة بالسعر الأساسي</div>
-            </div>
-          </div>
-          <div class="col-sm-4 d-flex align-items-center">
-            <div style="background:#f1f5f9;border-radius:10px;padding:12px 14px;width:100%;font-size:11px;color:#475569;line-height:1.7" id="base_note">
-              <i class="fas fa-info-circle me-1" style="color:#3b82f6"></i>
-              <span id="base_note_txt">
-                السعر السنوي = <?= $base_price ?> × 12<?= $base_disc > 0 ? ' × (1−'.$base_disc.'%)' : '' ?><br>
-                = <strong><?= number_format($by) ?> ر.س</strong>
-                <?= $base_disc > 0 ? '<br><span style="color:#15803d">توفير: '.number_format(round($base_price*12*($base_disc/100))).' ر.س سنوياً</span>' : '' ?>
-              </span>
             </div>
           </div>
         </div>
@@ -379,17 +301,13 @@ include '../includes/admin_header.php';
       <div style="overflow:hidden">
         <div class="fp-sect-hdr">
           <span>الميزة</span>
-          <span>سعر شهري (ر.س)</span>
-          <span>خصم سنوي %</span>
+          <span>السعر السنوي (ر.س)</span>
           <span>التفعيل</span>
-          <span>السنوي المحسوب</span>
         </div>
         <?php foreach ($feature_keys as $key):
-          $p      = $prices[$key] ?? ['feature_label'=>$key,'feature_icon'=>'star','price_monthly'=>0,'price_yearly'=>0,'discount_pct'=>0,'is_active'=>1];
+          $p      = $prices[$key] ?? ['feature_label'=>$key,'feature_icon'=>'star','price_yearly'=>0,'is_active'=>1];
           $active = (int)($p['is_active'] ?? 1);
-          $pm     = (float)$p['price_monthly'];
-          $disc   = (float)($p['discount_pct'] ?? 0);
-          $py     = $disc > 0 ? round($pm * 12 * (1 - $disc/100), 0) : round($pm * 12, 0);
+          $py     = (float)$p['price_yearly'];
           $icbg   = $active ? '#eff6ff' : '#f1f5f9';
           $iccl   = $active ? '#2563eb' : '#94a3b8';
         ?>
@@ -402,20 +320,10 @@ include '../includes/admin_header.php';
           </div>
           <div>
             <div class="input-group input-group-sm">
-              <input type="number" name="pm[<?= $key ?>]"
-                     class="form-control pm-input" data-key="<?= $key ?>"
-                     value="<?= $pm ?>" min="0" step="0.01"
-                     oninput="calcYearly('<?= $key ?>')">
-              <span class="input-group-text" style="font-size:10px">ر.س</span>
-            </div>
-          </div>
-          <div>
-            <div class="input-group input-group-sm">
-              <input type="number" name="disc[<?= $key ?>]"
-                     class="form-control disc-input" data-key="<?= $key ?>"
-                     value="<?= $disc ?>" min="0" max="99" step="0.5"
-                     placeholder="0" oninput="calcYearly('<?= $key ?>')">
-              <span class="input-group-text" style="font-size:10px">%</span>
+              <input type="number" name="py[<?= $key ?>]"
+                     class="form-control py-input" data-key="<?= $key ?>"
+                     value="<?= $py ?>" min="0" step="0.01" oninput="updatePreview()">
+              <span class="input-group-text" style="font-size:10px">ر.س/سنة</span>
             </div>
           </div>
           <div class="text-center">
@@ -425,12 +333,6 @@ include '../includes/admin_header.php';
                  onclick="toggleFeature('<?= $key ?>', this)">
               <div class="fp-toggle-knob" style="left:<?= $active ? '22px' : '3px' ?>"></div>
             </div>
-          </div>
-          <div>
-            <span class="fp-yearly-badge <?= $disc > 0 ? '' : 'no-disc' ?>" id="py_<?= $key ?>">
-              <?= $py > 0 ? number_format($py, 0).' ر.س' : '—' ?>
-              <?= $disc > 0 ? '<small style="color:#16a34a">(-'.(int)$disc.'%)</small>' : '' ?>
-            </span>
           </div>
         </div>
         <?php endforeach; ?>
@@ -445,17 +347,13 @@ include '../includes/admin_header.php';
       <div style="overflow:hidden">
         <div class="fp-sect-hdr">
           <span>العنصر</span>
-          <span>سعر شهري (ر.س)</span>
-          <span>خصم سنوي %</span>
+          <span>السعر السنوي (ر.س)</span>
           <span>التفعيل</span>
-          <span>السنوي المحسوب</span>
         </div>
         <?php foreach ($capacity_keys as $key):
-          $p      = $prices[$key] ?? ['feature_label'=>$key,'feature_icon'=>'plus','price_monthly'=>0,'price_yearly'=>0,'discount_pct'=>0,'is_active'=>1];
+          $p      = $prices[$key] ?? ['feature_label'=>$key,'feature_icon'=>'plus','price_yearly'=>0,'is_active'=>1];
           $active = (int)($p['is_active'] ?? 1);
-          $pm     = (float)$p['price_monthly'];
-          $disc   = (float)($p['discount_pct'] ?? 0);
-          $py     = $disc > 0 ? round($pm * 12 * (1 - $disc/100), 0) : round($pm * 12, 0);
+          $py     = (float)$p['price_yearly'];
           $icbg   = $active ? '#fefce8' : '#f1f5f9';
           $iccl   = $active ? '#d97706' : '#94a3b8';
         ?>
@@ -468,20 +366,10 @@ include '../includes/admin_header.php';
           </div>
           <div>
             <div class="input-group input-group-sm">
-              <input type="number" name="pm[<?= $key ?>]"
-                     class="form-control pm-input" data-key="<?= $key ?>"
-                     value="<?= $pm ?>" min="0" step="0.01"
-                     oninput="calcYearly('<?= $key ?>')">
-              <span class="input-group-text" style="font-size:10px">ر.س</span>
-            </div>
-          </div>
-          <div>
-            <div class="input-group input-group-sm">
-              <input type="number" name="disc[<?= $key ?>]"
-                     class="form-control disc-input" data-key="<?= $key ?>"
-                     value="<?= $disc ?>" min="0" max="99" step="0.5"
-                     placeholder="0" oninput="calcYearly('<?= $key ?>')">
-              <span class="input-group-text" style="font-size:10px">%</span>
+              <input type="number" name="py[<?= $key ?>]"
+                     class="form-control py-input" data-key="<?= $key ?>"
+                     value="<?= $py ?>" min="0" step="0.01" oninput="updatePreview()">
+              <span class="input-group-text" style="font-size:10px">ر.س/سنة</span>
             </div>
           </div>
           <div class="text-center">
@@ -491,12 +379,6 @@ include '../includes/admin_header.php';
                  onclick="toggleFeature('<?= $key ?>', this)">
               <div class="fp-toggle-knob" style="left:<?= $active ? '22px' : '3px' ?>"></div>
             </div>
-          </div>
-          <div>
-            <span class="fp-yearly-badge <?= $disc > 0 ? '' : 'no-disc' ?>" id="py_<?= $key ?>">
-              <?= $py > 0 ? number_format($py, 0).' ر.س' : '—' ?>
-              <?= $disc > 0 ? '<small style="color:#16a34a">(-'.(int)$disc.'%)</small>' : '' ?>
-            </span>
           </div>
         </div>
         <?php endforeach; ?>
@@ -534,14 +416,14 @@ include '../includes/admin_header.php';
           <input class="form-check-input preview-check" type="checkbox"
                  id="prev_<?= $key ?>"
                  data-key="<?= $key ?>"
-                 data-pm="<?= $p['price_monthly'] ?? 0 ?>"
+                 data-py="<?= $p['price_yearly'] ?? 0 ?>"
                  onchange="updatePreview()">
           <label class="form-check-label" for="prev_<?= $key ?>" style="font-size:12px">
             <?= e($p['feature_label'] ?? $key) ?>
             <?php if (!$active): ?>
               <span class="badge bg-secondary" style="font-size:9px">معطّلة</span>
-            <?php elseif ((float)($p['price_monthly'] ?? 0) > 0): ?>
-              <span style="color:#7c3aed;font-size:10px;font-weight:600">+<?= number_format((float)$p['price_monthly'],0) ?> ر.س</span>
+            <?php elseif ((float)($p['price_yearly'] ?? 0) > 0): ?>
+              <span style="color:#7c3aed;font-size:10px;font-weight:600">+<?= number_format((float)$p['price_yearly'],0) ?> ر.س</span>
             <?php else: ?>
               <span style="color:#64748b;font-size:10px">مجاناً</span>
             <?php endif; ?>
@@ -577,12 +459,8 @@ include '../includes/admin_header.php';
           </div>
           <hr style="margin:8px 0">
           <div class="d-flex justify-content-between align-items-center">
-            <span style="font-weight:700;font-size:13px">الإجمالي / شهر</span>
+            <span style="font-weight:700;font-size:13px">الإجمالي / سنة</span>
             <span style="font-size:20px;font-weight:900;color:#059669" id="prev_total">0 ر.س</span>
-          </div>
-          <div class="d-flex justify-content-between align-items-center mt-1">
-            <span style="font-size:11px;color:#64748b">أو سنوياً (بعد الخصم)</span>
-            <span style="font-size:13px;font-weight:700;color:#1a6339" id="prev_yearly">0 ر.س</span>
           </div>
         </div>
 
@@ -662,107 +540,28 @@ function toggleFeature(key, togEl) {
   updatePreview();
 }
 
-/* ── حساب السعر السنوي لصف واحد ── */
-function calcYearly(key) {
-  var pmInp   = document.querySelector('input[name="pm[' + key + ']"]');
-  var discInp = document.querySelector('input[name="disc[' + key + ']"]');
-  var badge   = document.getElementById('py_' + key);
-  if (!pmInp || !badge) return;
-  var pm   = parseFloat(pmInp.value) || 0;
-  var disc = parseFloat(discInp ? discInp.value : 0) || 0;
-  var py   = disc > 0 ? Math.round(pm * 12 * (1 - disc/100)) : Math.round(pm * 12);
-  badge.className = 'fp-yearly-badge ' + (disc > 0 ? '' : 'no-disc');
-  badge.innerHTML = py > 0
-    ? py.toLocaleString('ar') + ' ر.س' + (disc > 0 ? ' <small style="color:#16a34a">(-' + Math.round(disc) + '%)</small>' : '')
-    : '—';
-  updatePreview();
-}
-
-/* ── حساب السنوي للأساس ── */
-function calcBaseYearly() {
-  var bp      = parseFloat(document.getElementById('base_price_inp').value) || 0;
-  var bd      = parseFloat(document.getElementById('base_disc_inp').value)  || 0;
-  var py      = bd > 0 ? Math.round(bp * 12 * (1 - bd/100)) : Math.round(bp * 12);
-  var saved   = bd > 0 ? Math.round(bp * 12 * bd/100) : 0;
-  var hasDisc = bd > 0;
-
-  /* الرقم الكبير */
-  var bdg = document.getElementById('base_yearly_badge');
-  bdg.textContent = py.toLocaleString('ar');
-  bdg.style.color = hasDisc ? '#15803d' : '#64748b';
-
-  /* بطاقة السنوي */
-  var card = document.getElementById('base_yearly_card');
-  card.style.background   = hasDisc ? '#f0fdf4' : '#f8fafc';
-  card.style.borderColor  = hasDisc ? '#86efac' : '#e2e8f0';
-
-  /* أيقونة */
-  var iw = document.getElementById('base_yearly_icon_wrap');
-  var ic = document.getElementById('base_yearly_icon');
-  if (iw) iw.style.background = hasDisc ? '#dcfce7' : '#f1f5f9';
-  if (ic) ic.style.color      = hasDisc ? '#16a34a' : '#94a3b8';
-
-  /* شارة الخصم */
-  var badge = document.getElementById('base_disc_badge');
-  if (badge) {
-    if (hasDisc) {
-      badge.textContent    = 'وفّر ' + Math.round(bd) + '%';
-      badge.style.display  = '';
-      badge.style.background = '#dcfce7';
-      badge.style.color      = '#15803d';
-    } else {
-      badge.style.display = 'none';
-    }
-  }
-
-  /* الملاحظة */
-  var note = document.getElementById('base_note_txt');
-  if (note) {
-    note.innerHTML = 'السعر السنوي = ' + bp.toLocaleString('ar') + ' × 12'
-      + (hasDisc ? ' × (1−' + bd + '%)' : '') + '<br>'
-      + '= <strong>' + py.toLocaleString('ar') + ' ر.س</strong>'
-      + (hasDisc && saved > 0
-          ? '<br><span style="color:#15803d">توفير: ' + saved.toLocaleString('ar') + ' ر.س سنوياً</span>'
-          : '');
-  }
-  updatePreview();
-}
-
-/* ── معاينة حية ── */
+/* ── معاينة حية (سعر سنوي مباشر، بلا احتساب من شهري) ── */
 var _basePrice = <?= $base_price ?>;
 function updatePreview() {
-  var bp   = parseFloat(document.getElementById('base_price_inp')?.value) || _basePrice;
-  var bd   = parseFloat(document.getElementById('base_disc_inp')?.value)  || 0;
-  var feats = 0, featYearly = 0;
+  var bp = parseFloat(document.getElementById('base_price_inp')?.value) || _basePrice;
+  var feats = 0;
   document.querySelectorAll('.preview-check:checked').forEach(function(cb) {
     var key = cb.dataset.key;
-    var pmInp = document.querySelector('input[name="pm[' + key + ']"]');
-    var discInp = document.querySelector('input[name="disc[' + key + ']"]');
-    var pm   = pmInp ? (parseFloat(pmInp.value) || 0) : (parseFloat(cb.dataset.pm) || 0);
-    var disc = discInp ? (parseFloat(discInp.value) || 0) : 0;
-    feats += pm;
-    featYearly += disc > 0 ? pm * 12 * (1 - disc/100) : pm * 12;
+    var pyInp = document.querySelector('input[name="py[' + key + ']"]');
+    feats += pyInp ? (parseFloat(pyInp.value) || 0) : (parseFloat(cb.dataset.py) || 0);
   });
-  var eu  = parseInt(document.getElementById('prev_extra_users').value) || 0;
-  var ec  = parseInt(document.getElementById('prev_extra_cases').value) || 0;
-  var puInp = document.querySelector('input[name="pm[per_user]"]');
-  var pcInp = document.querySelector('input[name="pm[per_100_cases]"]');
-  var puDiscInp = document.querySelector('input[name="disc[per_user]"]');
-  var pcDiscInp = document.querySelector('input[name="disc[per_100_cases]"]');
-  var pu   = puInp ? (parseFloat(puInp.value)||0) : 0;
-  var pc   = pcInp ? (parseFloat(pcInp.value)||0) : 0;
-  var puDisc = puDiscInp ? (parseFloat(puDiscInp.value)||0) : 0;
-  var pcDisc = pcDiscInp ? (parseFloat(pcDiscInp.value)||0) : 0;
+  var eu = parseInt(document.getElementById('prev_extra_users').value) || 0;
+  var ec = parseInt(document.getElementById('prev_extra_cases').value) || 0;
+  var puInp = document.querySelector('input[name="py[per_user]"]');
+  var pcInp = document.querySelector('input[name="py[per_100_cases]"]');
+  var pu  = puInp ? (parseFloat(puInp.value)||0) : 0;
+  var pc  = pcInp ? (parseFloat(pcInp.value)||0) : 0;
   var cap = (eu * pu) + (ec * pc);
-  var capYearly = eu * pu * 12 * (1 - puDisc/100) + ec * pc * 12 * (1 - pcDisc/100);
-  var total  = bp + feats + cap;
-  var byBase = bd > 0 ? bp * 12 * (1 - bd/100) : bp * 12;
-  var yearly = byBase + featYearly + capYearly;
+  var total = bp + feats + cap;
   document.getElementById('prev_base').textContent  = bp.toLocaleString('ar') + ' ر.س';
   document.getElementById('prev_feats').textContent = feats.toLocaleString('ar') + ' ر.س';
   document.getElementById('prev_cap').textContent   = cap.toLocaleString('ar') + ' ر.س';
   document.getElementById('prev_total').textContent = total.toLocaleString('ar') + ' ر.س';
-  document.getElementById('prev_yearly').textContent = Math.round(yearly).toLocaleString('ar') + ' ر.س';
 }
 
 updatePreview();

@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['approve_id'])) {
     $id             = (int)$_POST['approve_id'];
     $record_payment = !empty($_POST['record_payment']);
     $extend_sub     = !empty($_POST['extend_subscription']);
-    $billing        = $_POST['billing'] ?? 'monthly';   // monthly | yearly
+    $billing        = 'yearly'; // كل اشتراكات المنصة سنوية فقط
     $amount         = (float)($_POST['amount'] ?? 0);
     $payment_date   = $conn->real_escape_string($_POST['payment_date'] ?? date('Y-m-d'));
     $notes          = $conn->real_escape_string(trim($_POST['notes'] ?? ''));
@@ -58,15 +58,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['approve_id'])) {
         if (!empty($req['is_custom'])) {
             $cf = json_decode($req['custom_features'] ?? '{}', true) ?: [];
             $cl = json_decode($req['custom_limits']   ?? '{}', true) ?: [];
-            $c_price = $admin_final ?? (float)($req['custom_price_monthly'] ?? 0);
+            // custom_price_monthly تخزّن الآن السعر السنوي مباشرةً (التسعير سنوي فقط في كل المنصة)
+            $c_price   = $admin_final ?? (float)($req['custom_price_monthly'] ?? 0);
             $c_users   = max(1, (int)($cl['users'] ?? 3));
             $c_cases   = max(1, (int)($cl['cases'] ?? 50));
             $c_storage = max(0, (int)($cl['storage_mb'] ?? 512));
-            $c_price_y = round($c_price * 10, 2); // سنوي = 10 أشهر
             $off_name_r = $conn->query("SELECT name FROM offices WHERE id=$oid")->fetch_assoc();
             $pkg_label  = $conn->real_escape_string('مخصصة — ' . ($off_name_r['name'] ?? 'مكتب'));
             $conn->query("INSERT INTO packages (name,price_monthly,price_yearly,max_users,max_cases,is_active)
-                VALUES ('$pkg_label',$c_price,$c_price_y,$c_users,$c_cases,1)");
+                VALUES ('$pkg_label',0,$c_price,$c_users,$c_cases,1)");
             $pkgid = (int)$conn->insert_id;
             // إدخال الميزات
             foreach ($cf as $fkey => $enabled) {
@@ -92,9 +92,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['approve_id'])) {
         // تغيير الباقة
         $conn->query("UPDATE offices SET package_id=$pkgid WHERE id=$oid");
 
-        // تمديد الاشتراك
+        // تمديد الاشتراك — سنة كاملة دائماً
         if ($extend_sub) {
-            $months = ($billing === 'yearly') ? 12 : 1;
+            $months = 12;
             $conn->query("UPDATE offices
                 SET subscription_end = DATE_ADD(
                     GREATEST(IFNULL(subscription_end, CURDATE()), CURDATE()),
@@ -318,12 +318,12 @@ if (isset($_GET['msg']) && isset($msg_map[$_GET['msg']])):
             <span class="badge" style="background:#7c3aed;font-size:12px">
               <i class="fas fa-puzzle-piece me-1"></i>مخصصة
             </span>
-            <div style="font-size:11px;color:#888"><?= number_format($r['custom_price_monthly'] ?? 0) ?> ر.س/شهر (مقدر)</div>
+            <div style="font-size:11px;color:#888"><?= number_format($r['custom_price_monthly'] ?? 0) ?> ر.س/سنة (مقدر)</div>
             <?php else: ?>
             <span class="badge bg-primary bg-opacity-10 text-primary" style="font-size:12px">
               <?= e($r['req_pkg']) ?>
             </span>
-            <div style="font-size:11px;color:#888"><?= number_format($r['req_price'] ?? 0) ?> ر.س/شهر</div>
+            <div style="font-size:11px;color:#888"><?= number_format($r['req_price_yearly'] ?? 0) ?> ر.س/سنة</div>
             <?php endif; ?>
           </td>
           <td style="max-width:220px">
@@ -378,7 +378,7 @@ if (isset($_GET['msg']) && isset($msg_map[$_GET['msg']])):
               $cl_json = addslashes(json_encode($cl_arr));
               ?>
               <button class="btn btn-sm btn-success"
-                      onclick="openApprove(<?= $r['id'] ?>,'<?= e(addslashes($r['office_name'])) ?>','<?= $is_c ? 'مخصصة' : e(addslashes($r['req_pkg'])) ?>',<?= (float)($is_c ? $r['custom_price_monthly'] : ($r['req_price']??0)) ?>,<?= (float)($is_c ? round((float)$r['custom_price_monthly']*10,2) : ($r['req_price_yearly']??0)) ?>,<?= $r['current_package_id']?1:0 ?>,'<?= e($r['subscription_end']??'') ?>','<?= e(addslashes($r['payment_proof']??'')) ?>','<?= strtolower(pathinfo($r['payment_proof']??'',PATHINFO_EXTENSION)) ?>',<?= $is_c?1:0 ?>,'<?= $cf_json ?>','<?= $cl_json ?>')">
+                      onclick="openApprove(<?= $r['id'] ?>,'<?= e(addslashes($r['office_name'])) ?>','<?= $is_c ? 'مخصصة' : e(addslashes($r['req_pkg'])) ?>',<?= (float)($is_c ? $r['custom_price_monthly'] : ($r['req_price_yearly']??0)) ?>,<?= $r['current_package_id']?1:0 ?>,'<?= e($r['subscription_end']??'') ?>','<?= e(addslashes($r['payment_proof']??'')) ?>','<?= strtolower(pathinfo($r['payment_proof']??'',PATHINFO_EXTENSION)) ?>',<?= $is_c?1:0 ?>,'<?= $cf_json ?>','<?= $cl_json ?>')">
                 <i class="fas fa-check me-1"></i>موافقة
               </button>
               <button class="btn btn-sm btn-outline-danger"
@@ -444,7 +444,7 @@ if (isset($_GET['msg']) && isset($msg_map[$_GET['msg']])):
             <div id="ap_custom_limits" style="font-size:12px;color:#374151;margin-bottom:8px"></div>
             <div class="row g-2 align-items-center">
               <div class="col-auto">
-                <label style="font-size:12px;font-weight:600;color:#5b21b6">السعر النهائي (ر.س/شهر)</label>
+                <label style="font-size:12px;font-weight:600;color:#5b21b6">السعر النهائي (ر.س/سنة)</label>
               </div>
               <div class="col">
                 <input type="number" name="admin_final_price" id="ap_final_price"
@@ -457,29 +457,7 @@ if (isset($_GET['msg']) && isset($msg_map[$_GET['msg']])):
             </div>
           </div>
 
-          <!-- دورة الفوترة -->
-          <div class="mb-3">
-            <label class="form-label fw-semibold">دورة الفوترة</label>
-            <div class="d-flex gap-2">
-              <label class="flex-fill" style="cursor:pointer">
-                <input type="radio" name="billing" value="monthly" id="bill_monthly" class="d-none" checked>
-                <div class="billing-opt text-center p-2 border rounded-3 selected-opt" id="opt_monthly">
-                  <i class="fas fa-calendar-day text-primary mb-1 d-block"></i>
-                  <div style="font-size:12px;font-weight:600">شهري</div>
-                  <div id="ap_price_m" style="font-size:13px;color:#059669;font-weight:700"></div>
-                </div>
-              </label>
-              <label class="flex-fill" style="cursor:pointer">
-                <input type="radio" name="billing" value="yearly" id="bill_yearly" class="d-none">
-                <div class="billing-opt text-center p-2 border rounded-3" id="opt_yearly">
-                  <i class="fas fa-calendar-alt text-warning mb-1 d-block"></i>
-                  <div style="font-size:12px;font-weight:600">سنوي</div>
-                  <div id="ap_price_y" style="font-size:13px;color:#059669;font-weight:700"></div>
-                  <span style="font-size:10px;background:#fef3c7;color:#92400e;border-radius:4px;padding:0 4px">وفّر 17%</span>
-                </div>
-              </label>
-            </div>
-          </div>
+          <input type="hidden" name="billing" value="yearly">
 
           <!-- تسجيل الدفعة -->
           <div class="form-check form-switch mb-2">
@@ -563,7 +541,6 @@ if (isset($_GET['msg']) && isset($msg_map[$_GET['msg']])):
 </div>
 
 <script>
-var _priceM = 0, _priceY = 0;
 var _featLabels = {
   'has_finance':'الشؤون المالية','has_invoices':'الفواتير','has_contracts':'العقود',
   'has_poa':'الوكالات','has_correspondence':'الصادر والوارد','has_library':'المكتبة القانونية',
@@ -572,8 +549,7 @@ var _featLabels = {
 };
 Object.assign(_featLabels, <?= json_encode(custom_pkg_label_map($conn), JSON_UNESCAPED_UNICODE) ?>);
 
-function openApprove(id, officeName, pkgName, priceM, priceY, hasCurPkg, subEnd, proofPath, proofExt, isCustom, cfJson, clJson) {
-  _priceM = priceM; _priceY = priceY;
+function openApprove(id, officeName, pkgName, price, hasCurPkg, subEnd, proofPath, proofExt, isCustom, cfJson, clJson) {
   isCustom = isCustom || 0;
 
   document.getElementById('approve_id').value = id;
@@ -592,8 +568,6 @@ function openApprove(id, officeName, pkgName, priceM, priceY, hasCurPkg, subEnd,
   } else {
     proofWrap.style.display = 'none';
   }
-  document.getElementById('ap_price_m').textContent = formatNum(priceM) + ' ر.س/شهر';
-  document.getElementById('ap_price_y').textContent = formatNum(priceY) + ' ر.س/سنة';
 
   // الباقة المخصصة
   var customWrap = document.getElementById('ap_custom_wrap');
@@ -609,25 +583,20 @@ function openApprove(id, officeName, pkgName, priceM, priceY, hasCurPkg, subEnd,
       ' &bull; <strong>القضايا:</strong> ' + (cl.cases||'—') +
       ' &bull; <strong>التخزين:</strong> ' + (cl.storage_mb||'—') + ' MB';
     document.getElementById('ap_final_price').value = '';
-    document.getElementById('ap_final_price').placeholder = formatNum(priceM) + ' ر.س (مقدر)';
+    document.getElementById('ap_final_price').placeholder = formatNum(price) + ' ر.س (مقدر)';
     customWrap.style.display = '';
   } else {
     customWrap.style.display = 'none';
   }
 
-  // ضبط المبلغ الافتراضي (شهري)
-  document.getElementById('ap_amount').value = priceM;
-  document.getElementById('ap_price_display').textContent = formatNum(priceM) + ' ر.س';
-
-  // إعادة ضبط دورة الفوترة على شهري
-  document.getElementById('bill_monthly').checked = true;
-  document.getElementById('opt_monthly').classList.add('selected-opt');
-  document.getElementById('opt_yearly').classList.remove('selected-opt');
+  // المبلغ (سنوي دائماً)
+  document.getElementById('ap_amount').value = price;
+  document.getElementById('ap_price_display').textContent = formatNum(price) + ' ر.س / سنة';
 
   // معلومات تمديد الاشتراك
   var subEl = document.getElementById('sub_info');
   if (subEnd) {
-    subEl.textContent = 'الاشتراك الحالي ينتهي في ' + subEnd + ' — سيُمدَّد بشهر (أو سنة حسب الدورة)';
+    subEl.textContent = 'الاشتراك الحالي ينتهي في ' + subEnd + ' — سيُمدَّد بسنة';
   } else {
     subEl.textContent = 'لا يوجد اشتراك نشط — سيبدأ اشتراك جديد';
   }
@@ -639,36 +608,11 @@ function formatNum(n) {
   return Number(n).toLocaleString('ar-SA', {maximumFractionDigits:0});
 }
 
-// تبديل دورة الفوترة
 document.addEventListener('DOMContentLoaded', function() {
-  ['bill_monthly','bill_yearly'].forEach(function(rid) {
-    document.getElementById(rid).addEventListener('change', function() {
-      var isYearly = (rid === 'bill_yearly');
-      document.getElementById('opt_monthly').classList.toggle('selected-opt', !isYearly);
-      document.getElementById('opt_yearly').classList.toggle('selected-opt', isYearly);
-      var price = isYearly ? _priceY : _priceM;
-      document.getElementById('ap_amount').value = price;
-      document.getElementById('ap_price_display').textContent = formatNum(price) + ' ر.س';
-      // تحديث معلومات التمديد
-      var subEl = document.getElementById('sub_info');
-      if (subEl.textContent.includes('سيُمدَّد') || subEl.textContent.includes('سيبدأ')) {
-        subEl.textContent = subEl.textContent.replace(/سيُمدَّد بشهر.*|سيُمدَّد بسنة.*/, isYearly ? 'سيُمدَّد بسنة' : 'سيُمدَّد بشهر');
-      }
-    });
-  });
-
   // إظهار/إخفاء حقول الدفعة
   document.getElementById('record_payment').addEventListener('change', function() {
     document.getElementById('payment_fields').style.display = this.checked ? '' : 'none';
     document.getElementById('ap_amount').required = this.checked;
-  });
-
-  // كليك على البطاقات للتحديد
-  document.querySelectorAll('.billing-opt').forEach(function(opt) {
-    opt.addEventListener('click', function() {
-      var radio = opt.parentElement.querySelector('input[type=radio]');
-      if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change')); }
-    });
   });
 });
 
