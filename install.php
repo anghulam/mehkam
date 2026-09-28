@@ -405,6 +405,7 @@ function getInstallSQL() {
             location VARCHAR(300),
             type ENUM('meeting','court','consultation','other') DEFAULT 'meeting',
             status ENUM('scheduled','completed','cancelled') DEFAULT 'scheduled',
+            assigned_to_id INT DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 

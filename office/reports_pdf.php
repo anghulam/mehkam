@@ -15,10 +15,12 @@ $settings = $conn->query("SELECT * FROM office_settings WHERE office_id=$oid")->
 $navy = '#0c1b36';
 $_restricted = isRestricted();
 $_uid        = (int)($_SESSION['user_id'] ?? 0);
+$_isTaskMgr  = can('tasks','approve');
 
 $_canCases    = can('cases','view');
 $_canSessions = can('sessions','view');
 $_canTasks    = can('tasks','view');
+$_canAppts    = can('tasks','view');
 $_canClients  = can('clients','view');
 $_canFinance  = can('finance','view') && hasFeature($conn, $oid, 'has_finance');
 
@@ -28,8 +30,8 @@ $fromE = $conn->real_escape_string($from);
 $toE   = $conn->real_escape_string($to);
 
 // تصدير مخصّص بالكامل: المستخدم يختار أي الأقسام تدخل بالتقرير + كلمة بحث اختيارية
-$_tabPerm   = ['cases'=>$_canCases,'sessions'=>$_canSessions,'tasks'=>$_canTasks,'clients'=>$_canClients,'finance'=>$_canFinance];
-$_tabTitles = ['cases'=>'القضايا','sessions'=>'الجلسات','tasks'=>'المهام','clients'=>'العملاء','finance'=>'المالية'];
+$_tabPerm   = ['cases'=>$_canCases,'sessions'=>$_canSessions,'tasks'=>$_canTasks,'appointments'=>$_canAppts,'clients'=>$_canClients,'finance'=>$_canFinance];
+$_tabTitles = ['cases'=>'القضايا','sessions'=>'الجلسات','tasks'=>'المهام','appointments'=>'المواعيد','clients'=>'العملاء','finance'=>'المالية'];
 
 $sections = array_values(array_intersect(
     (array)($_GET['sections'] ?? []),
@@ -52,6 +54,8 @@ $reportTitle = count($sections) === 1
 $S_SESS = ['scheduled'=>'مجدولة','held'=>'منعقدة','postponed'=>'مؤجّلة','cancelled'=>'ملغاة'];
 $S_CASE = ['active'=>'نشطة','closed'=>'مغلقة','suspended'=>'موقوفة','won'=>'مكسوبة','lost'=>'خاسرة','settled'=>'متسوية'];
 $S_TASK = ['pending'=>'معلقة','in_progress'=>'جارية','completed'=>'مكتملة','cancelled'=>'ملغاة'];
+$S_APPT = ['scheduled'=>'مجدول','completed'=>'تم','cancelled'=>'ملغي'];
+$_apTypes = ['meeting'=>'اجتماع','court'=>'محكمة','consultation'=>'استشارة','other'=>'أخرى'];
 $P_LBL  = ['low'=>'منخفضة','medium'=>'متوسطة','high'=>'عالية','urgent'=>'عاجلة'];
 $dt = function ($v) { if (empty($v)) return '—'; return trim(strip_tags(dDate($v, true))); };
 $dd = function ($v) { if (empty($v)) return '—'; return trim(strip_tags(dDate($v))); };
@@ -86,13 +90,28 @@ if (in_array('sessions', $sections, true)) {
 $tasks_total = 0; $tasks_by_status = []; $tasks_rows = [];
 if (in_array('tasks', $sections, true)) {
     $tw = "t.office_id=$oid AND DATE(t.due_date) BETWEEN '$fromE' AND '$toE'";
-    if ($_restricted) $tw .= " AND t.assigned_to_id=$_uid";
+    if (!$_isTaskMgr) $tw .= " AND t.assigned_to_id=$_uid";
     if ($_rpQ !== '') $tw .= " AND (t.title LIKE '%$_rpQE%' OR t.assigned_to LIKE '%$_rpQE%')";
     $tasks_total = (int)dbVal($conn, "SELECT COUNT(*) FROM tasks t WHERE $tw");
     $r = $conn->query("SELECT status, COUNT(*) c FROM tasks t WHERE $tw GROUP BY status");
     if ($r) while ($x = $r->fetch_assoc()) $tasks_by_status[$x['status']] = (int)$x['c'];
     $rs = $conn->query("SELECT t.*, c.case_number FROM tasks t LEFT JOIN cases c ON t.case_id=c.id WHERE $tw ORDER BY t.due_date DESC LIMIT $ROW_CAP");
     if ($rs) while ($x = $rs->fetch_assoc()) $tasks_rows[] = $x;
+}
+
+/* ═══ المواعيد ═══ */
+$appts_total = 0; $appts_by_status = []; $appts_rows = [];
+if (in_array('appointments', $sections, true)) {
+    $aw = "a.office_id=$oid AND DATE(a.appointment_date) BETWEEN '$fromE' AND '$toE'";
+    if (!$_isTaskMgr) $aw .= " AND a.assigned_to_id=$_uid";
+    if ($_rpQ !== '') $aw .= " AND (a.title LIKE '%$_rpQE%' OR a.location LIKE '%$_rpQE%')";
+    $appts_total = (int)dbVal($conn, "SELECT COUNT(*) FROM appointments a WHERE $aw");
+    $r = $conn->query("SELECT status, COUNT(*) c FROM appointments a WHERE $aw GROUP BY status");
+    if ($r) while ($x = $r->fetch_assoc()) $appts_by_status[$x['status']] = (int)$x['c'];
+    $rs = $conn->query("SELECT a.*, cl.full_name client_name, au.full_name assignee_name
+        FROM appointments a LEFT JOIN clients cl ON a.client_id=cl.id LEFT JOIN users au ON a.assigned_to_id=au.id
+        WHERE $aw ORDER BY a.appointment_date DESC LIMIT $ROW_CAP");
+    if ($rs) while ($x = $rs->fetch_assoc()) $appts_rows[] = $x;
 }
 
 /* ═══ العملاء ═══ */
@@ -193,6 +212,25 @@ function rp_section_open($title, $count, $navy) {
   </tr>
   <?php endforeach; else: ?>
   <tr><td colspan="5" style="<?= $IC ?>;text-align:center;color:#9aa4b2">لا توجد مهام في هذه الفترة</td></tr>
+  <?php endif; ?>
+</table>
+<?= $SEP ?><br>
+<?php endif; ?>
+
+<?php if (in_array('appointments', $sections, true)): rp_section_open('المواعيد', $appts_total, $navy); ?>
+<table width="100%" cellpadding="6" cellspacing="0" style="border:0.4pt solid #dde3ec">
+  <tr><td style="<?= $HC ?>">الموعد</td><td style="<?= $HC ?>">النوع</td><td style="<?= $HC ?>">العميل</td><td style="<?= $HC ?>">المكلَّف</td><td style="<?= $HC ?>">الحالة</td><td style="<?= $HC ?>">التاريخ والوقت</td></tr>
+  <?php if ($appts_rows): foreach ($appts_rows as $a): ?>
+  <tr>
+    <td style="<?= $IC ?>"><?= e(mb_substr($a['title'],0,40)) ?></td>
+    <td style="<?= $IC ?>"><?= e($_apTypes[$a['type']] ?? $a['type']) ?></td>
+    <td style="<?= $IC ?>"><?= e($a['client_name'] ?: '—') ?></td>
+    <td style="<?= $IC ?>"><?= e($a['assignee_name'] ?: '—') ?></td>
+    <td style="<?= $IC ?>"><?= e($S_APPT[$a['status']] ?? $a['status']) ?></td>
+    <td style="<?= $IC ?>"><?= e($dt($a['appointment_date'])) ?></td>
+  </tr>
+  <?php endforeach; else: ?>
+  <tr><td colspan="6" style="<?= $IC ?>;text-align:center;color:#9aa4b2">لا توجد مواعيد في هذه الفترة</td></tr>
   <?php endif; ?>
 </table>
 <?= $SEP ?><br>

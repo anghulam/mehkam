@@ -13,7 +13,15 @@ foreach ([
     "ALTER TABLE tasks ADD COLUMN completed_at DATETIME DEFAULT NULL",
     // إضافة الوقت لموعد استحقاق المهمة (كان تاريخاً بلا وقت) — توسيع آمن، لا يفقد القيم القديمة
     "ALTER TABLE tasks MODIFY COLUMN due_date DATETIME DEFAULT NULL",
+    // تكليف المواعيد بموظّف — بنفس مبدأ إسناد المهام
+    "ALTER TABLE appointments ADD COLUMN assigned_to_id INT DEFAULT NULL",
 ] as $_d) { try { $conn->query($_d); } catch (\Throwable $e) {} }
+
+// «مدير المهام والمواعيد»: صلاحية مستقلة (اعتماد) يمنحها مالك المكتب لموظّف محدَّد فقط —
+// غير مرتبطة تلقائياً بصلاحية «إضافة» حتى لا يصبح كل موظف يملك إضافة مديراً بالصدفة.
+// من يملكها: يُسند المهام/المواعيد لأي موظف، ويرى مهام وموعد الجميع هنا وفي التقارير.
+// غيره: يرى وتُسنَد له تلقائياً مهامه/مواعيده الخاصة فقط، ولا يقدر يكلّف زميلاً.
+$_isTaskMgr = can('tasks', 'approve');
 
 if (isset($_GET['delete_t'])) {
     $conn->query("DELETE FROM tasks WHERE id=".(int)$_GET['delete_t']." AND office_id=$oid");
@@ -35,7 +43,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($_POST['form_type'] === 'task') {
         $title  = $conn->real_escape_string($_POST['title']);
         $assign = $conn->real_escape_string($_POST['assigned_to'] ?? '');
-        $aid    = !empty($_POST['assigned_to_id']) ? (int)$_POST['assigned_to_id'] : 'NULL';
+        // غير مدير المهام لا يقدر يكلّف زميلاً — تُسنَد له هو دائماً بصرف النظر عمّا أُرسل من النموذج
+        // (النموذج أصلاً يخفي خانة التكليف عنه، وهذا تحقّق من طرف الخادم لا يُعتمَد فيه على العرض وحده)
+        $aid = $_isTaskMgr ? (!empty($_POST['assigned_to_id']) ? (int)$_POST['assigned_to_id'] : 'NULL') : (int)($_SESSION['user_id'] ?? 0);
         // موظّف مُقيَّد النطاق لم يحدّد مكلَّفاً → يُسنَد لنفسه تلقائياً، وإلا تختفي مهمته من قائمته المقيَّدة
         if ($aid === 'NULL' && isRestricted()) $aid = (int)($_SESSION['user_id'] ?? 0);
         // لو اختار مستخدماً، خزّن اسمه في assigned_to أيضاً للعرض القديم
@@ -69,23 +79,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $type   = $conn->real_escape_string($_POST['type']);
         $status = $conn->real_escape_string($_POST['status']);
         $cid    = (int)$_POST['client_id'];
+        // غير مدير المهام لا يقدر يكلّف زميلاً بموعد — يُسنَد له هو دائماً (نفس مبدأ المهام أعلاه)
+        $aid = $_isTaskMgr && !empty($_POST['assigned_to_id']) ? (int)$_POST['assigned_to_id'] : (int)($_SESSION['user_id'] ?? 0);
         if (!empty($_POST['id'])) {
             $id = (int)$_POST['id'];
-            $conn->query("UPDATE appointments SET title='$title',appointment_date=$adate_sql,location='$loc',type='$type',status='$status',client_id=$cid WHERE id=$id AND office_id=$oid");
+            $conn->query("UPDATE appointments SET title='$title',appointment_date=$adate_sql,location='$loc',type='$type',status='$status',client_id=$cid,assigned_to_id=$aid WHERE id=$id AND office_id=$oid");
+            logAction($conn, 'update', 'appointment', $id, 'تعديل موعد: ' . mb_substr($_POST['title'], 0, 80));
         } else {
-            $conn->query("INSERT INTO appointments (office_id,title,appointment_date,location,type,status,client_id) VALUES ($oid,'$title',$adate_sql,'$loc','$type','$status',$cid)");
+            $conn->query("INSERT INTO appointments (office_id,title,appointment_date,location,type,status,client_id,assigned_to_id) VALUES ($oid,'$title',$adate_sql,'$loc','$type','$status',$cid,$aid)");
+            logAction($conn, 'create', 'appointment', $conn->insert_id, 'موعد جديد: ' . mb_substr($_POST['title'], 0, 80));
         }
         header("Location: tasks.php?tab=appointments&msg=saved"); exit;
     }
 }
 
-// موظّف غير مالك المكتب يرى مهامه المُسندة إليه فقط (بالمعرّف أو بالاسم للمهام القديمة)
+// من ليس مديراً للمهام والمواعيد يرى فقط ما يخصه (بالمعرّف أو بالاسم للمهام القديمة)
+// مدير المهام (can('tasks','approve')) يرى كل شيء بلا قيد — نفس آلية caseScope/finScope في بقية النظام
 $_myTaskScope = '';
-if (isRestricted()) {
+$_apptScope   = '';
+if (!$_isTaskMgr) {
     $_uid = (int)($_SESSION['user_id'] ?? 0);
     $_uname = $conn->real_escape_string($_SESSION['full_name'] ?? '');
-    $_myTaskScope = " AND (assigned_to_id=$_uid OR (assigned_to_id IS NULL AND assigned_to='$_uname')";
-    // موديول تفويض الغياب: أثناء غياب زميل مُفوِّض لي، تظهر مهامه ضمن قائمتي أيضاً
+    $_delegFrom = '';
+    // موديول تفويض الغياب: أثناء غياب زميل مُفوِّض لي، تظهر مهامه ومواعيده ضمن قائمتي أيضاً
     if (hasModule($conn, $oid, 'absence_delegation')) {
         try {
             $conn->query("CREATE TABLE IF NOT EXISTS absence_delegations (
@@ -93,26 +109,38 @@ if (isRestricted()) {
                 start_date DATE NOT NULL, end_date DATE NOT NULL, reason VARCHAR(255) DEFAULT NULL,
                 status ENUM('active','ended') DEFAULT 'active', created_by INT DEFAULT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_office (office_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-            $_myTaskScope .= " OR assigned_to_id IN (SELECT from_user_id FROM absence_delegations WHERE office_id=$oid AND to_user_id=$_uid AND status='active' AND CURDATE() BETWEEN start_date AND end_date)";
+            $_delegFrom = "SELECT from_user_id FROM absence_delegations WHERE office_id=$oid AND to_user_id=$_uid AND status='active' AND CURDATE() BETWEEN start_date AND end_date";
         } catch (\Throwable $e) {}
     }
-    $_myTaskScope .= ")";
+    $_myTaskScope = " AND (assigned_to_id=$_uid OR (assigned_to_id IS NULL AND assigned_to='$_uname')" . ($_delegFrom !== '' ? " OR assigned_to_id IN ($_delegFrom)" : '') . ")";
+    $_apptScope   = " AND (a.assigned_to_id=$_uid" . ($_delegFrom !== '' ? " OR a.assigned_to_id IN ($_delegFrom)" : '') . ")";
 }
 $tasks        = $conn->query("SELECT * FROM tasks WHERE office_id=$oid$_myTaskScope ORDER BY FIELD(status,'in_progress','pending','completed','cancelled'), due_date ASC");
-$appointments = $conn->query("SELECT a.*, cl.full_name client_name FROM appointments a LEFT JOIN clients cl ON a.client_id=cl.id WHERE a.office_id=$oid ORDER BY a.appointment_date DESC");
+$appointments = $conn->query("SELECT a.*, cl.full_name client_name, au.full_name assignee_name
+    FROM appointments a
+    LEFT JOIN clients cl ON a.client_id=cl.id
+    LEFT JOIN users au   ON a.assigned_to_id=au.id
+    WHERE a.office_id=$oid$_apptScope ORDER BY a.appointment_date DESC");
 $clients      = $conn->query("SELECT id,full_name FROM clients WHERE office_id=$oid ORDER BY full_name");
 $clients_arr  = [0=>'-- بدون عميل --'];
 while ($cl = $clients->fetch_assoc()) $clients_arr[$cl['id']] = $cl['full_name'];
+
+// موظفو المكتب — لقائمة «تكليف» في نافذتي المهمة والموعد (تُعرض فقط لمدير المهام)
+$_officeStaff = [];
+if ($_isTaskMgr) {
+    $_sr = $conn->query("SELECT id,full_name FROM users WHERE office_id=$oid AND is_active=1 ORDER BY full_name");
+    if ($_sr) while ($_su = $_sr->fetch_assoc()) $_officeStaff[] = $_su;
+}
 
 $edit_t = null; $edit_a = null;
 if (isset($_GET['edit_t'])) $edit_t = $conn->query("SELECT * FROM tasks WHERE id=".(int)$_GET['edit_t']." AND office_id=$oid")->fetch_assoc();
 if (isset($_GET['edit_a'])) $edit_a = $conn->query("SELECT * FROM appointments WHERE id=".(int)$_GET['edit_a']." AND office_id=$oid")->fetch_assoc();
 
-// إحصائيات المهام
+// إحصائيات المهام والمواعيد
 $pending_count   = $conn->query("SELECT COUNT(*) c FROM tasks WHERE office_id=$oid AND status='pending'$_myTaskScope")->fetch_assoc()['c'];
 $progress_count  = $conn->query("SELECT COUNT(*) c FROM tasks WHERE office_id=$oid AND status='in_progress'$_myTaskScope")->fetch_assoc()['c'];
 $done_count      = $conn->query("SELECT COUNT(*) c FROM tasks WHERE office_id=$oid AND status='completed'$_myTaskScope")->fetch_assoc()['c'];
-$today_appts     = $conn->query("SELECT COUNT(*) c FROM appointments WHERE office_id=$oid AND DATE(appointment_date)=CURDATE()")->fetch_assoc()['c'];
+$today_appts     = $conn->query("SELECT COUNT(*) c FROM appointments a WHERE a.office_id=$oid AND DATE(a.appointment_date)=CURDATE()$_apptScope")->fetch_assoc()['c'];
 
 include '../includes/office_header.php';
 ?>
@@ -147,6 +175,12 @@ include '../includes/office_header.php';
   <li class="nav-item"><a class="nav-link <?= $tab==='tasks'?'active':'' ?>" href="tasks.php?tab=tasks"><i class="fas fa-tasks me-1"></i>المهام</a></li>
   <li class="nav-item"><a class="nav-link <?= $tab==='appointments'?'active':'' ?>" href="tasks.php?tab=appointments"><i class="fas fa-calendar-alt me-1"></i>المواعيد</a></li>
 </ul>
+
+<?php if (!$_isTaskMgr): ?>
+<div class="alert alert-light border mb-3" style="font-size:12.5px">
+  <i class="fas fa-circle-info me-1 text-primary"></i>تظهر لك هنا مهامك ومواعيدك الخاصة أو المُوكَلة إليك فقط.
+</div>
+<?php endif; ?>
 
 <style>
 .tk-card{background:#fff;border:1px solid #eef1f6;border-radius:14px;padding:16px;height:100%;display:flex;flex-direction:column;transition:box-shadow .15s}
@@ -219,6 +253,7 @@ include '../includes/office_header.php';
           <?= statusBadge($a['status']) ?>
         </div>
         <div class="tk-meta"><i class="fas fa-calendar-day text-muted" style="width:14px"></i><?= e(dDate($a['appointment_date'], true)) ?></div>
+        <?php if ($a['assignee_name'] && $_isTaskMgr): ?><div class="tk-meta"><i class="fas fa-user-tie text-muted" style="width:14px"></i><?= e($a['assignee_name']) ?></div><?php endif; ?>
         <?php if ($a['client_name']): ?><div class="tk-meta"><i class="fas fa-user text-muted" style="width:14px"></i><?= e($a['client_name']) ?></div><?php endif; ?>
         <?php if ($a['location']): ?><div class="tk-meta"><i class="fas fa-location-dot text-muted" style="width:14px"></i><?= e($a['location']) ?></div><?php endif; ?>
         <div class="tk-foot">
@@ -249,21 +284,21 @@ include '../includes/office_header.php';
             <input type="text" name="title" class="form-control" required value="<?= e($edit_t['title'] ?? '') ?>">
           </div>
           <div class="row g-2">
+            <?php if ($_isTaskMgr): $_cur_aid = (int)($edit_t['assigned_to_id'] ?? 0); ?>
             <div class="col-6">
               <label class="form-label fw-semibold">المكلَّف</label>
-              <?php
-              $_tu = $conn->query("SELECT id,full_name FROM users WHERE office_id=$oid AND is_active=1 ORDER BY full_name");
-              $_cur_aid = (int)($edit_t['assigned_to_id'] ?? 0);
-              ?>
               <select name="assigned_to_id" class="form-select">
                 <option value="">— بدون / يدوي —</option>
-                <?php if ($_tu) while ($_u = $_tu->fetch_assoc()): ?>
+                <?php foreach ($_officeStaff as $_u): ?>
                 <option value="<?= $_u['id'] ?>" <?= $_cur_aid === (int)$_u['id'] ? 'selected' : '' ?>><?= e($_u['full_name']) ?></option>
-                <?php endwhile; ?>
+                <?php endforeach; ?>
               </select>
               <input type="text" name="assigned_to" class="form-control form-control-sm mt-1"
                      placeholder="أو اكتب اسماً يدوياً" value="<?= e($edit_t['assigned_to'] ?? '') ?>">
             </div>
+            <?php else: ?>
+            <input type="hidden" name="assigned_to_id" value="">
+            <?php endif; ?>
             <div class="col-6">
               <label class="form-label fw-semibold">الموعد النهائي</label>
               <input type="datetime-local" name="due_date" class="form-control"
@@ -346,6 +381,17 @@ include '../includes/office_header.php';
                 <?php endforeach; ?>
               </select>
             </div>
+            <?php if ($_isTaskMgr): $_cur_aaid = (int)($edit_a['assigned_to_id'] ?? 0); ?>
+            <div class="col-6">
+              <label class="form-label fw-semibold">المكلَّف</label>
+              <select name="assigned_to_id" class="form-select">
+                <option value="">— أنا —</option>
+                <?php foreach ($_officeStaff as $_u): ?>
+                <option value="<?= $_u['id'] ?>" <?= $_cur_aaid === (int)$_u['id'] ? 'selected' : '' ?>><?= e($_u['full_name']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <?php endif; ?>
           </div>
         </div>
         <div class="modal-footer">

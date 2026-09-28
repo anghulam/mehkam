@@ -248,6 +248,24 @@ $steps = [
             INDEX idx_office_date (office_id, created_at), INDEX idx_client (client_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ],
+    'أرشفة القضايا المنتهية' => [
+        "ALTER TABLE cases ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0",
+        "ALTER TABLE cases ADD COLUMN archived_at DATETIME DEFAULT NULL",
+        "ALTER TABLE cases ADD COLUMN archived_by INT DEFAULT NULL",
+        "ALTER TABLE cases ADD COLUMN archive_note VARCHAR(500) DEFAULT NULL",
+    ],
+    'تكليف المواعيد بموظّف (نفس مبدأ إسناد المهام)' => [
+        "ALTER TABLE appointments ADD COLUMN assigned_to_id INT DEFAULT NULL",
+    ],
+    'أنواع الخدمات الرقمية' => [
+        "CREATE TABLE IF NOT EXISTS office_service_types (
+            id INT AUTO_INCREMENT PRIMARY KEY, office_id INT NOT NULL,
+            name VARCHAR(150) NOT NULL, is_active TINYINT(1) NOT NULL DEFAULT 1,
+            sort_order INT NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_office (office_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        "ALTER TABLE office_services ADD COLUMN type_id INT DEFAULT NULL",
+    ],
 ];
 
 $done = 0; $skipped = 0; $failed = 0;
