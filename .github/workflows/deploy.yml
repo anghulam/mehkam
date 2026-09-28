@@ -26,11 +26,11 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftps
           local-dir: ./
-          # مسار نسبي لجذر جلسة الـ FTP، وليس مساراً مطلقاً في نظام الملفات — جذر هذا
-          # الحساب نفسه يهبط على /home/mehkam، فكتابة "/home/mehkam/public_html/" هنا
-          # كان يُنشئ مساراً وهمياً مكرَّراً (/home/mehkam/home/mehkam/public_html/) بدل
-          # الوصول لموقع فعلي. المسار الصحيح: public_html فقط، نسبةً لجذر الحساب.
-          server-dir: /public_html/
+          # حساب mehkam_ftp@mehkam.app مقفول (jailed) أصلاً على مجلد public_html —
+          # يعني جذر جلسة الـ FTP نفسه *هو* public_html، وليس /home/mehkam. كتابة أي
+          # اسم مجلد هنا (public_html/ أو home/mehkam/public_html/) ينشئ نسخة مكرَّرة
+          # من المجلد داخل نفسه. المسار الصحيح: الجذر نفسه، بلا أي اسم مجلد إضافي.
+          server-dir: /
           # لا يحذف أي شيء موجود على السيرفر وغير موجود في المستودع — يرفع فقط الملفات
           # الجديدة/المتغيّرة. هذا يحمي ملفات العملاء المرفوعة (uploads) وملف قاعدة البيانات
           # وملف install.lock من الحذف بالخطأ لأنها غير مُتتبَّعة بـ git أصلاً.
