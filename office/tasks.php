@@ -95,6 +95,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // من ليس مديراً للمهام والمواعيد يرى فقط ما يخصه (بالمعرّف أو بالاسم للمهام القديمة)
 // مدير المهام (can('tasks','approve')) يرى كل شيء بلا قيد — نفس آلية caseScope/finScope في بقية النظام
+// ويقدر أيضاً يفلتر القائمتين على موظّف واحد محدَّد (emp_f) بدل الكل
+$_empFilter = $_isTaskMgr ? (int)($_GET['emp_f'] ?? 0) : 0;
 $_myTaskScope = '';
 $_apptScope   = '';
 if (!$_isTaskMgr) {
@@ -114,6 +116,9 @@ if (!$_isTaskMgr) {
     }
     $_myTaskScope = " AND (assigned_to_id=$_uid OR (assigned_to_id IS NULL AND assigned_to='$_uname')" . ($_delegFrom !== '' ? " OR assigned_to_id IN ($_delegFrom)" : '') . ")";
     $_apptScope   = " AND (a.assigned_to_id=$_uid" . ($_delegFrom !== '' ? " OR a.assigned_to_id IN ($_delegFrom)" : '') . ")";
+} elseif ($_empFilter) {
+    $_myTaskScope = " AND assigned_to_id=$_empFilter";
+    $_apptScope   = " AND a.assigned_to_id=$_empFilter";
 }
 $tasks        = $conn->query("SELECT * FROM tasks WHERE office_id=$oid$_myTaskScope ORDER BY FIELD(status,'in_progress','pending','completed','cancelled'), due_date ASC");
 $appointments = $conn->query("SELECT a.*, cl.full_name client_name, au.full_name assignee_name
@@ -171,14 +176,37 @@ include '../includes/office_header.php';
   <?php endforeach; ?>
 </div>
 
+<?php $_empQS = $_empFilter ? '&emp_f=' . $_empFilter : ''; ?>
 <ul class="nav nav-tabs mb-3">
-  <li class="nav-item"><a class="nav-link <?= $tab==='tasks'?'active':'' ?>" href="tasks.php?tab=tasks"><i class="fas fa-tasks me-1"></i>المهام</a></li>
-  <li class="nav-item"><a class="nav-link <?= $tab==='appointments'?'active':'' ?>" href="tasks.php?tab=appointments"><i class="fas fa-calendar-alt me-1"></i>المواعيد</a></li>
+  <li class="nav-item"><a class="nav-link <?= $tab==='tasks'?'active':'' ?>" href="tasks.php?tab=tasks<?= $_empQS ?>"><i class="fas fa-tasks me-1"></i>المهام</a></li>
+  <li class="nav-item"><a class="nav-link <?= $tab==='appointments'?'active':'' ?>" href="tasks.php?tab=appointments<?= $_empQS ?>"><i class="fas fa-calendar-alt me-1"></i>المواعيد</a></li>
 </ul>
 
 <?php if (!$_isTaskMgr): ?>
 <div class="alert alert-light border mb-3" style="font-size:12.5px">
   <i class="fas fa-circle-info me-1 text-primary"></i>تظهر لك هنا مهامك ومواعيدك الخاصة أو المُوكَلة إليك فقط.
+</div>
+<?php else: ?>
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form class="row g-2 align-items-center" method="GET">
+      <input type="hidden" name="tab" value="<?= e($tab) ?>">
+      <div class="col-auto">
+        <label class="form-label form-label-sm mb-0 me-1"><i class="fas fa-user-group me-1 text-muted"></i>فلترة حسب الموظف</label>
+      </div>
+      <div class="col-auto">
+        <select name="emp_f" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="0">كل الموظفين</option>
+          <?php foreach ($_officeStaff as $_u): ?>
+          <option value="<?= $_u['id'] ?>" <?= $_empFilter===(int)$_u['id']?'selected':'' ?>><?= e($_u['full_name']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <?php if ($_empFilter): ?>
+      <div class="col-auto"><a href="tasks.php?tab=<?= e($tab) ?>" class="btn btn-sm btn-outline-secondary"><i class="fas fa-rotate-right me-1"></i>إلغاء الفلتر</a></div>
+      <?php endif; ?>
+    </form>
+  </div>
 </div>
 <?php endif; ?>
 
