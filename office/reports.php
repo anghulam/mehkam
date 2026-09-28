@@ -47,12 +47,21 @@ if (!isset($tabs[$tab])) $tab = array_key_first($tabs) ?? '';
 $_rpQ  = trim($_GET['q'] ?? '');
 $_rpQE = $conn->real_escape_string($_rpQ);
 $status_f = $_GET['status_f'] ?? '';
+// فلتر الموظف لتبويبَي المهام/المواعيد — لمدير المهام فقط (اعتماد)؛ يفصل التقرير
+// إما شاملاً لكل الموظفين (بلا فلتر) أو مخصّصاً بموظف واحد يختاره
+$_empFilter = $_isTaskMgr ? (int)($_GET['emp_f'] ?? 0) : 0;
+$_officeStaff = [];
+if ($_isTaskMgr) {
+    $_sr = $conn->query("SELECT id,full_name FROM users WHERE office_id=$oid AND is_active=1 ORDER BY full_name");
+    if ($_sr) while ($_su = $_sr->fetch_assoc()) $_officeStaff[] = $_su;
+}
 
 $S_CASE = ['active'=>'نشطة','closed'=>'مغلقة','suspended'=>'موقوفة','won'=>'مكسوبة','lost'=>'خاسرة','settled'=>'متسوية'];
 $S_SESS = ['scheduled'=>'مجدولة','held'=>'منعقدة','postponed'=>'مؤجّلة','cancelled'=>'ملغاة'];
 $S_TASK = ['pending'=>'معلقة','in_progress'=>'جارية','completed'=>'مكتملة','cancelled'=>'ملغاة'];
 $S_APPT = ['scheduled'=>'مجدول','completed'=>'تم','cancelled'=>'ملغي'];
 $_apTypes = ['meeting'=>'اجتماع','court'=>'محكمة','consultation'=>'استشارة','other'=>'أخرى'];
+$_empFilterName = $_empFilter ? (array_column($_officeStaff, 'full_name', 'id')[$_empFilter] ?? null) : null;
 $_statusOptions = ['cases'=>$S_CASE,'sessions'=>$S_SESS,'tasks'=>$S_TASK,'appointments'=>$S_APPT];
 
 /* ═══ القضايا ═══ */
@@ -92,6 +101,7 @@ $tasks_total = 0; $tasks_by_status = []; $tasks_list = null;
 if ($_canTasks) {
     $tw = "t.office_id=$oid AND DATE(t.due_date) BETWEEN '$fromE' AND '$toE'";
     if (!$_isTaskMgr) $tw .= " AND (t.assigned_to_id=$_uid OR (t.assigned_to_id IS NULL AND t.assigned_to='" . $conn->real_escape_string($_SESSION['full_name'] ?? '') . "'))";
+    elseif ($_empFilter) $tw .= " AND t.assigned_to_id=$_empFilter";
     if ($tab === 'tasks' && $_rpQ !== '') $tw .= " AND (t.title LIKE '%$_rpQE%' OR t.assigned_to LIKE '%$_rpQE%')";
     if ($tab === 'tasks' && $status_f !== '') $tw .= " AND t.status='" . $conn->real_escape_string($status_f) . "'";
     $tasks_total = (int)dbVal($conn, "SELECT COUNT(*) FROM tasks t WHERE $tw");
@@ -109,6 +119,7 @@ $appts_total = 0; $appts_by_status = []; $appts_list = null;
 if ($_canAppts) {
     $aw = "a.office_id=$oid AND DATE(a.appointment_date) BETWEEN '$fromE' AND '$toE'";
     if (!$_isTaskMgr) $aw .= " AND a.assigned_to_id=$_uid";
+    elseif ($_empFilter) $aw .= " AND a.assigned_to_id=$_empFilter";
     if ($tab === 'appointments' && $_rpQ !== '') $aw .= " AND (a.title LIKE '%$_rpQE%' OR a.location LIKE '%$_rpQE%')";
     if ($tab === 'appointments' && $status_f !== '') $aw .= " AND a.status='" . $conn->real_escape_string($status_f) . "'";
     $appts_total = (int)dbVal($conn, "SELECT COUNT(*) FROM appointments a WHERE $aw");
@@ -229,6 +240,7 @@ include '../includes/office_header.php';
           <input type="hidden" name="from" value="<?= e($from) ?>">
           <input type="hidden" name="to" value="<?= e($to) ?>">
           <input type="hidden" name="q" value="<?= e($_rpQ) ?>">
+          <?php if ($_empFilter): ?><input type="hidden" name="emp_f" value="<?= $_empFilter ?>"><?php endif; ?>
 
           <div class="mb-3">
             <div class="form-check">
@@ -288,6 +300,17 @@ function rpToggleCustom() {
         </select>
       </div>
       <?php endif; ?>
+      <?php if ($_isTaskMgr && in_array($tab, ['tasks','appointments'], true)): ?>
+      <div class="rp-filter-field">
+        <label>الموظف</label>
+        <select name="emp_f" class="form-select">
+          <option value="0">كل الموظفين (شامل)</option>
+          <?php foreach ($_officeStaff as $_u): ?>
+          <option value="<?= $_u['id'] ?>" <?= $_empFilter===(int)$_u['id']?'selected':'' ?>><?= e($_u['full_name']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <?php endif; ?>
       <div class="rp-filter-field">
         <label>من تاريخ</label>
         <input type="date" name="from" class="form-control mk-plain-date" value="<?= e($from) ?>">
@@ -299,7 +322,7 @@ function rpToggleCustom() {
       </div>
       <div class="rp-filter-actions">
         <button class="btn btn-primary"><i class="fas fa-filter me-1"></i>تطبيق مخصص</button>
-        <a href="reports.php?tab=<?= e($tab) ?>&from=2000-01-01&to=<?= date('Y-m-d') ?>" class="btn btn-outline-primary" title="كل الفترات بلا استثناء">
+        <a href="reports.php?tab=<?= e($tab) ?><?= $_empFilter ? '&emp_f='.$_empFilter : '' ?>&from=2000-01-01&to=<?= date('Y-m-d') ?>" class="btn btn-outline-primary" title="كل الفترات بلا استثناء">
           <i class="fas fa-infinity me-1"></i>تقرير شامل
         </a>
         <a href="reports.php?tab=<?= e($tab) ?>" class="btn btn-outline-secondary" title="إعادة تعيين"><i class="fas fa-rotate-right"></i></a>
@@ -384,7 +407,7 @@ function rpToggleCustom() {
 <ul class="nav nav-tabs rp-tabs mb-3">
   <?php foreach ($tabs as $tk=>$tl): ?>
   <li class="nav-item">
-    <a class="nav-link <?= $tab===$tk?'active':'' ?>" href="?tab=<?= $tk ?>&from=<?= e($from) ?>&to=<?= e($to) ?>"><?= $tl ?></a>
+    <a class="nav-link <?= $tab===$tk?'active':'' ?>" href="?tab=<?= $tk ?>&from=<?= e($from) ?>&to=<?= e($to) ?><?= $_empFilter ? '&emp_f='.$_empFilter : '' ?>"><?= $tl ?></a>
   </li>
   <?php endforeach; ?>
 </ul>
@@ -451,6 +474,7 @@ function rpToggleCustom() {
 <div class="card">
   <div class="card-header d-flex flex-wrap gap-2">
     <span><i class="fas fa-list-check me-2 text-purple"></i>المهام (<?= $tasks_total ?>)</span>
+    <?php if ($_empFilterName): ?><span class="badge bg-primary-subtle text-primary"><i class="fas fa-user me-1"></i><?= e($_empFilterName) ?></span><?php endif; ?>
     <?php foreach ($tasks_by_status as $st=>$ct): ?><?= str_replace('</span>', ' ('.$ct.')</span>', statusBadge($st)) ?><?php endforeach; ?>
   </div>
   <div class="card-body p-0">
@@ -481,6 +505,7 @@ function rpToggleCustom() {
 <div class="card">
   <div class="card-header d-flex flex-wrap gap-2">
     <span><i class="fas fa-calendar-alt me-2 text-teal"></i>المواعيد (<?= $appts_total ?>)</span>
+    <?php if ($_empFilterName): ?><span class="badge bg-primary-subtle text-primary"><i class="fas fa-user me-1"></i><?= e($_empFilterName) ?></span><?php endif; ?>
     <?php foreach ($appts_by_status as $st=>$ct): ?><span class="badge bg-secondary-subtle text-secondary ms-1"><?= $S_APPT[$st] ?? $st ?>: <?= $ct ?></span><?php endforeach; ?>
   </div>
   <div class="card-body p-0">

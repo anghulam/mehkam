@@ -46,6 +46,12 @@ if (!$sections) { header('Location: dashboard.php?msg=denied'); exit; }
 
 $_rpQ  = trim($_GET['q'] ?? '');
 $_rpQE = $conn->real_escape_string($_rpQ);
+// فلتر الموظف لقسمَي المهام/المواعيد — لمدير المهام فقط، ممرَّر من reports.php
+$_empFilter = $_isTaskMgr ? (int)($_GET['emp_f'] ?? 0) : 0;
+$_empFilterName = null;
+if ($_empFilter) {
+    $_empFilterName = dbVal($conn, "SELECT full_name FROM users WHERE id=$_empFilter AND office_id=$oid");
+}
 
 $reportTitle = count($sections) === 1
     ? $_tabTitles[$sections[0]]
@@ -91,6 +97,7 @@ $tasks_total = 0; $tasks_by_status = []; $tasks_rows = [];
 if (in_array('tasks', $sections, true)) {
     $tw = "t.office_id=$oid AND DATE(t.due_date) BETWEEN '$fromE' AND '$toE'";
     if (!$_isTaskMgr) $tw .= " AND t.assigned_to_id=$_uid";
+    elseif ($_empFilter) $tw .= " AND t.assigned_to_id=$_empFilter";
     if ($_rpQ !== '') $tw .= " AND (t.title LIKE '%$_rpQE%' OR t.assigned_to LIKE '%$_rpQE%')";
     $tasks_total = (int)dbVal($conn, "SELECT COUNT(*) FROM tasks t WHERE $tw");
     $r = $conn->query("SELECT status, COUNT(*) c FROM tasks t WHERE $tw GROUP BY status");
@@ -104,6 +111,7 @@ $appts_total = 0; $appts_by_status = []; $appts_rows = [];
 if (in_array('appointments', $sections, true)) {
     $aw = "a.office_id=$oid AND DATE(a.appointment_date) BETWEEN '$fromE' AND '$toE'";
     if (!$_isTaskMgr) $aw .= " AND a.assigned_to_id=$_uid";
+    elseif ($_empFilter) $aw .= " AND a.assigned_to_id=$_empFilter";
     if ($_rpQ !== '') $aw .= " AND (a.title LIKE '%$_rpQE%' OR a.location LIKE '%$_rpQE%')";
     $appts_total = (int)dbVal($conn, "SELECT COUNT(*) FROM appointments a WHERE $aw");
     $r = $conn->query("SELECT status, COUNT(*) c FROM appointments a WHERE $aw GROUP BY status");
@@ -156,6 +164,7 @@ function rp_section_open($title, $count, $navy) {
 <div style="text-align:center;color:#6b7280;font-size:8.5pt;padding-bottom:6px">
   الفترة: <?= e($dd($from)) ?> — <?= e($dd($to)) ?> &nbsp;•&nbsp; تاريخ الإصدار: <?= e($dd(date('Y-m-d'))) ?>
   <?= $_rpQ !== '' ? ' &nbsp;•&nbsp; بحث: «' . e($_rpQ) . '»' : '' ?>
+  <?= $_empFilterName ? ' &nbsp;•&nbsp; الموظف: ' . e($_empFilterName) : '' ?>
   <?= $_restricted ? ' &nbsp;•&nbsp; بيانات شخصية (القضايا/الجلسات/المهام المُسندة إليك)' : '' ?>
 </div>
 <div style="border-bottom:1.2pt solid <?= $navy ?>">&nbsp;</div>
