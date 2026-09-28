@@ -412,11 +412,23 @@ function rpToggleCustom() {
   <?php endforeach; ?>
 </ul>
 
+<?php
+// زر تصدير سريع لجدول التبويب المفتوح حالياً بنفس فلاتره (تاريخ/بحث/موظّف) —
+// بديل مباشر لنافذة «تصدير شامل/مخصص» أعلى الصفحة، بلا خطوات إضافية
+$_pdfBtn = function (string $tabKey) use ($from, $to, $_rpQ, $_empFilter, $_isTaskMgr): string {
+    $qs = 'sections[]=' . urlencode($tabKey) . '&from=' . urlencode($from) . '&to=' . urlencode($to);
+    if ($_rpQ !== '') $qs .= '&q=' . urlencode($_rpQ);
+    if ($_isTaskMgr && $_empFilter && in_array($tabKey, ['tasks', 'appointments'], true)) $qs .= '&emp_f=' . $_empFilter;
+    return '<a href="reports_pdf.php?' . $qs . '&view=1" target="_blank" class="btn btn-sm btn-outline-danger ms-auto">'
+         . '<i class="fas fa-file-pdf me-1"></i>تصدير PDF</a>';
+};
+?>
 <?php if ($tab === 'cases'): ?>
 <div class="card">
   <div class="card-header d-flex flex-wrap gap-2">
     <span><i class="fas fa-gavel me-2 text-primary"></i>القضايا (<?= $cases_total ?>)</span>
     <?php foreach ($cases_by_status as $st=>$ct): ?><?= str_replace('</span>', ' ('.$ct.')</span>', statusBadge($st)) ?><?php endforeach; ?>
+    <?= $_pdfBtn('cases') ?>
   </div>
   <div class="card-body p-0">
     <div class="table-responsive">
@@ -447,6 +459,7 @@ function rpToggleCustom() {
   <div class="card-header d-flex flex-wrap gap-2">
     <span><i class="fas fa-calendar-days me-2 text-info"></i>الجلسات (<?= $sessions_total ?>)</span>
     <?php foreach ($sessions_by_status as $st=>$ct): ?><span class="badge bg-secondary-subtle text-secondary ms-1"><?= $S_SESS[$st] ?? $st ?>: <?= $ct ?></span><?php endforeach; ?>
+    <?= $_pdfBtn('sessions') ?>
   </div>
   <div class="card-body p-0">
     <div class="table-responsive">
@@ -476,6 +489,7 @@ function rpToggleCustom() {
     <span><i class="fas fa-list-check me-2 text-purple"></i>المهام (<?= $tasks_total ?>)</span>
     <?php if ($_empFilterName): ?><span class="badge bg-primary-subtle text-primary"><i class="fas fa-user me-1"></i><?= e($_empFilterName) ?></span><?php endif; ?>
     <?php foreach ($tasks_by_status as $st=>$ct): ?><?= str_replace('</span>', ' ('.$ct.')</span>', statusBadge($st)) ?><?php endforeach; ?>
+    <?= $_pdfBtn('tasks') ?>
   </div>
   <div class="card-body p-0">
     <div class="table-responsive">
@@ -507,6 +521,7 @@ function rpToggleCustom() {
     <span><i class="fas fa-calendar-alt me-2 text-teal"></i>المواعيد (<?= $appts_total ?>)</span>
     <?php if ($_empFilterName): ?><span class="badge bg-primary-subtle text-primary"><i class="fas fa-user me-1"></i><?= e($_empFilterName) ?></span><?php endif; ?>
     <?php foreach ($appts_by_status as $st=>$ct): ?><span class="badge bg-secondary-subtle text-secondary ms-1"><?= $S_APPT[$st] ?? $st ?>: <?= $ct ?></span><?php endforeach; ?>
+    <?= $_pdfBtn('appointments') ?>
   </div>
   <div class="card-body p-0">
     <div class="table-responsive">
@@ -534,7 +549,10 @@ function rpToggleCustom() {
 
 <?php if ($tab === 'clients'): ?>
 <div class="card">
-  <div class="card-header"><i class="fas fa-address-book me-2 text-secondary"></i>العملاء الجدد (<?= $clients_total ?>)</div>
+  <div class="card-header d-flex flex-wrap gap-2 align-items-center">
+    <span><i class="fas fa-address-book me-2 text-secondary"></i>العملاء الجدد (<?= $clients_total ?>)</span>
+    <?= $_pdfBtn('clients') ?>
+  </div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0">
@@ -561,7 +579,10 @@ function rpToggleCustom() {
 
 <?php if ($tab === 'finance' && $_canFinance): ?>
 <div class="card">
-  <div class="card-header"><i class="fas fa-coins me-2 text-success"></i>الحركة المالية (فواتير مدفوعة)</div>
+  <div class="card-header d-flex flex-wrap gap-2 align-items-center">
+    <span><i class="fas fa-coins me-2 text-success"></i>الحركة المالية (فواتير مدفوعة)</span>
+    <?= $_pdfBtn('finance') ?>
+  </div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0">
