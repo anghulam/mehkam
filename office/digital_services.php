@@ -16,8 +16,10 @@ $uname = $_SESSION['full_name'] ?? '';
 // فتح نافذة «طلب خدمة جديد» مباشرة مع تحديد العميل مسبقاً — من ملف العميل (client_file.php)
 $_new_for_client = (int)($_GET['client_id'] ?? 0);
 $_new_client_row = $_new_for_client ? $conn->query("SELECT id,full_name,id_number,phone,city FROM clients WHERE id=$_new_for_client AND office_id=$oid LIMIT 1")->fetch_assoc() : null;
-// نفس الاصطلاح المستخدم بقية النظام: 'admin' يُعامَل معاملة مالك المكتب أيضاً
-$isOwner = in_array($_SESSION['role'] ?? '', ['office_owner', 'admin'], true);
+// صلاحية مستقلة لإدارة كتالوج الخدمات (إضافة/تعديل/حذف خدمة أو نوع) — منفصلة عن صلاحية
+// «إضافة» طلب خدمة لعميل. مالك المكتب/الأدمن يملكها دائماً تلقائياً عبر can()، وأي موظف
+// غيرهم يحتاج تفعيل «اعتماد» له صراحة تحت قسم «الخدمات الرقمية» من صفحة صلاحيات المستخدمين.
+$_canManageCatalog = can('services', 'approve');
 
 /* ── جداول (إنشاء آمن) ── */
 try {
@@ -156,9 +158,9 @@ if (isset($_GET['lookup'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ft = $_POST['form_type'] ?? '';
 
-    /* ─── كتالوج الخدمات (المالك/الأدمن فقط) ─── */
+    /* ─── كتالوج الخدمات (يتطلب صلاحية إدارة كتالوج الخدمات) ─── */
     if ($ft === 'catalog_save') {
-        if (!$isOwner) { header("Location: digital_services.php?tab=catalog&msg=denied"); exit; }
+        if (!$_canManageCatalog) { header("Location: digital_services.php?tab=catalog&msg=denied"); exit; }
         $sid   = (int) ($_POST['id'] ?? 0);
         $name  = $conn->real_escape_string(trim($_POST['name'] ?? ''));
         $desc  = $conn->real_escape_string(trim($_POST['description'] ?? ''));
@@ -182,9 +184,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: digital_services.php?tab=catalog&msg=saved"); exit;
     }
 
-    /* ─── أنواع الخدمات — قائمة تُدار من إعدادات الخدمات الرقمية (المالك/الأدمن فقط) ─── */
+    /* ─── أنواع الخدمات — قائمة تُدار من إعدادات الخدمات الرقمية (نفس صلاحية إدارة الكتالوج) ─── */
     if ($ft === 'type_save') {
-        if (!$isOwner) { header("Location: digital_services.php?tab=types&msg=denied"); exit; }
+        if (!$_canManageCatalog) { header("Location: digital_services.php?tab=types&msg=denied"); exit; }
         $tid  = (int) ($_POST['id'] ?? 0);
         $name = $conn->real_escape_string(trim($_POST['name'] ?? ''));
         if ($name === '') { header("Location: digital_services.php?tab=types&msg=invalid"); exit; }
@@ -197,13 +199,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: digital_services.php?tab=types&msg=saved"); exit;
     }
     if ($ft === 'type_toggle') {
-        if (!$isOwner) { header("Location: digital_services.php?tab=types&msg=denied"); exit; }
+        if (!$_canManageCatalog) { header("Location: digital_services.php?tab=types&msg=denied"); exit; }
         $tid = (int) ($_POST['id'] ?? 0);
         $conn->query("UPDATE office_service_types SET is_active = 1 - is_active WHERE id=$tid AND office_id=$oid");
         header("Location: digital_services.php?tab=types"); exit;
     }
     if ($ft === 'type_delete') {
-        if (!$isOwner) { header("Location: digital_services.php?tab=types&msg=denied"); exit; }
+        if (!$_canManageCatalog) { header("Location: digital_services.php?tab=types&msg=denied"); exit; }
         $tid = (int) ($_POST['id'] ?? 0);
         // فكّ ارتباط أي خدمة بهذا النوع قبل حذفه بدل تركها بمرجع معلَّق
         $conn->query("UPDATE office_services SET type_id=NULL WHERE type_id=$tid AND office_id=$oid");
@@ -211,14 +213,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: digital_services.php?tab=types&msg=deleted"); exit;
     }
     if ($ft === 'catalog_toggle') {
-        if (!$isOwner) { header("Location: digital_services.php?tab=catalog&msg=denied"); exit; }
+        if (!$_canManageCatalog) { header("Location: digital_services.php?tab=catalog&msg=denied"); exit; }
         $sid = (int) ($_POST['id'] ?? 0);
         $ok = $conn->query("UPDATE office_services SET is_active = 1 - is_active WHERE id=$sid AND office_id=$oid");
         if (!$ok) { header("Location: digital_services.php?tab=catalog&msg=dberror&detail=" . urlencode(mb_substr($conn->error, 0, 200))); exit; }
         header("Location: digital_services.php?tab=catalog"); exit;
     }
     if ($ft === 'catalog_delete') {
-        if (!$isOwner) { header("Location: digital_services.php?tab=catalog&msg=denied"); exit; }
+        if (!$_canManageCatalog) { header("Location: digital_services.php?tab=catalog&msg=denied"); exit; }
         $sid = (int) ($_POST['id'] ?? 0);
         $ok = $conn->query("DELETE FROM office_services WHERE id=$sid AND office_id=$oid");
         if (!$ok) { header("Location: digital_services.php?tab=catalog&msg=dberror&detail=" . urlencode(mb_substr($conn->error, 0, 200))); exit; }
@@ -314,7 +316,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 /* ════════ بيانات العرض ════════ */
 $tab = $_GET['tab'] ?? 'requests';
-if (!$isOwner || !in_array($tab, ['requests', 'catalog', 'types'], true)) $tab = 'requests';
+if (!$_canManageCatalog || !in_array($tab, ['requests', 'catalog', 'types'], true)) $tab = 'requests';
 
 $serviceTypes = [];
 $tr = $conn->query("SELECT * FROM office_service_types WHERE office_id=$oid ORDER BY is_active DESC, sort_order, id");
@@ -351,11 +353,11 @@ $cnt = $conn->query("SELECT
     FROM service_requests WHERE office_id=$oid")->fetch_assoc();
 
 $edit_svc = null;
-if ($isOwner && isset($_GET['edit_svc'])) {
+if ($_canManageCatalog && isset($_GET['edit_svc'])) {
     $edit_svc = $conn->query("SELECT * FROM office_services WHERE id=" . (int) $_GET['edit_svc'] . " AND office_id=$oid")->fetch_assoc();
 }
 $edit_type = null;
-if ($isOwner && isset($_GET['edit_type'])) {
+if ($_canManageCatalog && isset($_GET['edit_type'])) {
     $edit_type = $conn->query("SELECT * FROM office_service_types WHERE id=" . (int) $_GET['edit_type'] . " AND office_id=$oid")->fetch_assoc();
 }
 
@@ -378,7 +380,7 @@ include '../includes/office_header.php';
       <i class="fas fa-plus"></i> طلب خدمة جديد
     </button>
     <?php endif; ?>
-    <?php if ($isOwner): ?>
+    <?php if ($_canManageCatalog): ?>
     <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#svcModal">
       <i class="fas fa-list-check"></i> إضافة خدمة
     </button>
@@ -388,7 +390,7 @@ include '../includes/office_header.php';
 
 <?php if (isset($_GET['msg'])):
   $M = ['created'=>'تم إنشاء الطلب.','invgen'=>'تم إصدار الفاتورة.','status'=>'حُدّثت الحالة.','saved'=>'حُفظت الخدمة.','deleted'=>'حُذفت الخدمة.'];
-  $ME = ['denied'=>'ليست لديك صلاحية لهذا الإجراء — متاح لمالك المكتب فقط.','invalid'=>'أدخل اسماً صحيحاً وسعراً صالحاً (0 أو أكثر).','dberror'=>'تعذّر تنفيذ العملية بسبب خطأ في قاعدة البيانات.'];
+  $ME = ['denied'=>'ليست لديك صلاحية لهذا الإجراء — يتطلب صلاحية إدارة كتالوج الخدمات الرقمية.','invalid'=>'أدخل اسماً صحيحاً وسعراً صالحاً (0 أو أكثر).','dberror'=>'تعذّر تنفيذ العملية بسبب خطأ في قاعدة البيانات.'];
   $msgKey = $_GET['msg'];
 ?>
 <?php if (isset($M[$msgKey])): ?>
@@ -414,7 +416,7 @@ include '../includes/office_header.php';
 <ul class="nav nav-tabs mb-3">
   <li class="nav-item"><a class="nav-link <?= $tab==='requests'?'active':'' ?>" href="digital_services.php?tab=requests">
     <i class="fas fa-inbox me-1"></i>الطلبات</a></li>
-  <?php if ($isOwner): ?>
+  <?php if ($_canManageCatalog): ?>
   <li class="nav-item"><a class="nav-link <?= $tab==='catalog'?'active':'' ?>" href="digital_services.php?tab=catalog">
     <i class="fas fa-tags me-1"></i>خدمات المكتب <span class="badge bg-secondary-subtle text-secondary ms-1"><?= count($services) ?></span></a></li>
   <li class="nav-item"><a class="nav-link <?= $tab==='types'?'active':'' ?>" href="digital_services.php?tab=types">
@@ -685,7 +687,7 @@ include '../includes/office_header.php';
   </div>
 </div>
 
-<?php if ($isOwner): ?>
+<?php if ($_canManageCatalog): ?>
 <!-- ═══ Modal: خدمة (كتالوج) ═══ -->
 <div class="modal fade" id="svcModal" tabindex="-1">
   <div class="modal-dialog">
