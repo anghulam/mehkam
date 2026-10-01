@@ -67,9 +67,14 @@ foreach ($offices as $oid) {
     $office   = $conn->query("SELECT * FROM offices WHERE id=$oid")->fetch_assoc();
     if (!$office) continue;
     $settings = $conn->query("SELECT * FROM office_settings WHERE office_id=$oid")->fetch_assoc() ?: [];
-    $owner    = $conn->query("SELECT email, full_name FROM users
-        WHERE office_id=$oid AND role='office_owner' AND is_active=1 AND email<>'' LIMIT 1")->fetch_assoc();
-    if (!$owner || empty($owner['email'])) { $skipped++; continue; }
+    // يُرسَل لكل من يملك صلاحية «إضافة طلب خدمة» (مدخلو بيانات الخدمات الرقمية)
+    // — ويشمل ذلك مالك المكتب تلقائياً دائماً حتى لو لم يُفعِّل الصلاحية صراحةً
+    // لنفسه — وليس لبريد المالك فقط بصرف النظر عمّن يتابع الخدمات فعلياً.
+    $recipients = array_values(array_filter(
+        usersWithPermission($conn, $oid, 'services', 'add'),
+        fn($u) => !empty($u['email'])
+    ));
+    if (!$recipients) { $skipped++; continue; }
 
     $rows = [];
     $rr = $conn->query("SELECT sr.*, cl.full_name client_name, cl.id_number client_idn, c.case_number
@@ -161,17 +166,25 @@ foreach ($offices as $oid) {
         function_exists('mail_logo_abs') ? mail_logo_abs($conn) : ''
     );
 
-    $r = sendMail($conn, $owner['email'], $owner['full_name'] ?? '', 'تقرير الخدمات الرقمية — ' . $today, $emailHtml, [
-        ['name' => "تقرير-الخدمات-$today.pdf", 'data' => $pdfBytes, 'mime' => 'application/pdf'],
-    ]);
+    $anySent = false;
+    foreach ($recipients as $rcpt) {
+        $r = sendMail($conn, $rcpt['email'], $rcpt['full_name'] ?? '', 'تقرير الخدمات الرقمية — ' . $today, $emailHtml, [
+            ['name' => "تقرير-الخدمات-$today.pdf", 'data' => $pdfBytes, 'mime' => 'application/pdf'],
+        ]);
+        if (!empty($r['ok'])) {
+            $anySent = true;
+            echo "office $oid: sent to {$rcpt['email']}\n";
+        } else {
+            echo "office $oid: send failed to {$rcpt['email']} — " . ($r['error'] ?? '') . "\n";
+        }
+    }
 
-    if (!empty($r['ok'])) {
+    if ($anySent) {
         $conn->query("INSERT INTO site_content (setting_key,setting_value) VALUES ('svc_rpt_$oid','$today')
             ON DUPLICATE KEY UPDATE setting_value='$today'");
         $sent++;
-        echo "office $oid: sent to {$owner['email']}\n";
     } else {
-        echo "office $oid: send failed — " . ($r['error'] ?? '') . "\n";
+        echo "office $oid: all sends failed\n";
     }
 }
 

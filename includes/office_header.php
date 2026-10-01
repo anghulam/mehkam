@@ -27,10 +27,12 @@ if ($oid) {
     } catch (\Exception $e) {}
 }
 
-// عدد الإشعارات غير المقروءة
+// عدد الإشعارات غير المقروءة — تنبيه موجَّه لي شخصياً، أو تنبيه عام للمكتب كله
+// (بلا مستخدم محدَّد) — وليس أي صف لمجرّد أنه يحمل office_id نفسه حتى لو كان
+// موجَّهاً أصلاً لموظّف آخر بعينه (وإلا لرآه كل موظفي المكتب لا الموظف المقصود فقط)
 $_uid = (int)($_SESSION['user_id'] ?? 0);
 $_unread = 0;
-$q2 = $conn->query("SELECT COUNT(*) c FROM notifications WHERE (user_id=$_uid OR office_id=$oid) AND is_read=0");
+$q2 = $conn->query("SELECT COUNT(*) c FROM notifications WHERE (user_id=$_uid OR (office_id=$oid AND user_id IS NULL)) AND is_read=0");
 if ($q2) $_unread = (int)$q2->fetch_assoc()['c'];
 
 // التحقق من المزايا حسب الباقة

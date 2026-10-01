@@ -426,6 +426,25 @@ function requirePerm($section, $action, $redirect = null) {
     exit;
 }
 
+/**
+ * يُرجع كل موظّفي المكتب (نشطين) الذين يملكون صلاحية مُحدَّدة — للاستخدام في
+ * توجيه تنبيه/بريد لأصحاب صلاحية بعينها بدل بثّه لكل المكتب. مالك المكتب/الأدمن
+ * يُحتسب دائماً ضمن النتيجة (مثل can() تماماً) حتى لو لم تُفعَّل له صلاحية صريحة.
+ * usersWithPermission($conn, $oid, 'services', 'add')
+ */
+function usersWithPermission($conn, $oid, $section, $action = 'view') {
+    $oid = (int) $oid;
+    $out = [];
+    $r = $conn->query("SELECT id, full_name, email, role, permissions FROM users WHERE office_id=$oid AND is_active=1");
+    if (!$r) return $out;
+    while ($u = $r->fetch_assoc()) {
+        if ($u['role'] === 'office_owner' || $u['role'] === 'admin') { $out[] = $u; continue; }
+        $perms = !empty($u['permissions']) ? json_decode($u['permissions'], true) : null;
+        if (is_array($perms) && in_array($action, $perms[$section] ?? [], true)) $out[] = $u;
+    }
+    return $out;
+}
+
 /* ── نطاق البيانات (تقييد المستخدم بقضايا محددة) ──────────── */
 function isRestricted() {
     static $r = null;

@@ -164,13 +164,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $sid   = (int) ($_POST['id'] ?? 0);
         $name  = $conn->real_escape_string(trim($_POST['name'] ?? ''));
         $desc  = $conn->real_escape_string(trim($_POST['description'] ?? ''));
-        $price = round((float) ($_POST['price'] ?? 0), 2);
+        $priceIncl = round((float) ($_POST['price'] ?? 0), 2); // السعر الذي يدخله المكتب — شامل الضريبة
         $tid   = (int) ($_POST['type_id'] ?? 0);
         if ($tid && !$conn->query("SELECT id FROM office_service_types WHERE id=$tid AND office_id=$oid")->num_rows) $tid = 0;
         $tidSql = $tid ?: 'NULL';
-        if ($name === '' || $price < 0) {
+        if ($name === '' || $priceIncl < 0) {
             header("Location: digital_services.php?tab=catalog&msg=invalid"); exit;
         }
+        // نخزّن داخلياً السعر الأساسي قبل الضريبة كما في بقية النظام (الفواتير وحساب ض.ق.م)
+        $rate = $VAT;
+        if ($sid) {
+            $existingRate = $conn->query("SELECT vat_rate FROM office_services WHERE id=$sid AND office_id=$oid")->fetch_assoc();
+            if ($existingRate && $existingRate['vat_rate']) $rate = (float) $existingRate['vat_rate'];
+        }
+        $price = round($priceIncl / (1 + $rate / 100), 2);
         if ($sid) {
             $ok = $conn->query("UPDATE office_services SET name='$name', description='$desc', price=$price, type_id=$tidSql
                 WHERE id=$sid AND office_id=$oid");
@@ -295,6 +302,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $collected = !isset($_POST['collected']) || $_POST['collected'] === '1';
             [$invId, $invErr] = svc_make_invoice($conn, $oid, $reqId, $collected);
 
+            // تنبيه لِمن يملك صلاحية «إضافة طلب خدمة» فقط (مدخلو بيانات الخدمات الرقمية)
+            // — موجَّه لكل واحد منهم تحديداً بـ user_id، لا تنبيهاً عاماً يراه كل موظفي
+            // المكتب — ولا يُرسَل لمن أنشأ الطلب بنفسه لتفادي تنبيهه بإجرائه هو.
+            $clientNameForNotif = $clientId ? (dbVal($conn, "SELECT full_name FROM clients WHERE id=$clientId") ?: '—') : '—';
+            $notifMsg = $conn->real_escape_string(
+                "خدمة: {$svc['name']} — العميل: $clientNameForNotif — الإجمالي: " . number_format($total, 2) . " ﷼ — بواسطة: $uname"
+            );
+            foreach (usersWithPermission($conn, $oid, 'services', 'add') as $_nu) {
+                if ((int) $_nu['id'] === $uid) continue;
+                $conn->query("INSERT INTO notifications (user_id,office_id,title,message,type)
+                    VALUES (" . (int) $_nu['id'] . ",$oid,'طلب خدمة رقمية جديد','$notifMsg','info')");
+            }
+
             $_retTo = trim($_POST['return_to'] ?? '');
             if (!preg_match('/^[a-z_]+\.php(\?[a-z0-9_=&%.\-]*)?$/i', $_retTo)) $_retTo = '';
             if ($_retTo !== '') {
@@ -332,10 +352,14 @@ $activeServices = array_values(array_filter($services, fn($s) => $s['is_active']
 $fstat = $_GET['status_f'] ?? '';
 $ftype = (int) ($_GET['type_f'] ?? 0);
 $fq    = trim($_GET['q'] ?? '');
+$ffrom = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['from'] ?? '') ? $_GET['from'] : '';
+$fto   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['to']   ?? '') ? $_GET['to']   : '';
 $w = "sr.office_id=$oid";
 if (in_array($fstat, ['new', 'in_progress', 'completed', 'cancelled'], true)) $w .= " AND sr.status='$fstat'";
 if ($ftype) $w .= " AND os.type_id=$ftype";
 if ($fq !== '') { $qe = $conn->real_escape_string($fq); $w .= " AND (cl.full_name LIKE '%$qe%' OR cl.id_number LIKE '%$qe%' OR sr.service_name LIKE '%$qe%')"; }
+if ($ffrom !== '') $w .= " AND DATE(sr.created_at) >= '" . $conn->real_escape_string($ffrom) . "'";
+if ($fto   !== '') $w .= " AND DATE(sr.created_at) <= '" . $conn->real_escape_string($fto)   . "'";
 
 $requests = $conn->query("SELECT sr.*, cl.full_name client_name, cl.id_number client_idn,
         c.case_number, inv.invoice_number, inv.public_token, ot.name type_name
@@ -385,6 +409,11 @@ include '../includes/office_header.php';
       <i class="fas fa-list-check"></i> إضافة خدمة
     </button>
     <?php endif; ?>
+    <a class="btn btn-outline-danger"
+       href="digital_services_pdf.php?from=<?= e($ffrom ?: date('Y-m-d', strtotime('-30 days'))) ?>&to=<?= e($fto ?: date('Y-m-d')) ?>&status_f=<?= e($fstat) ?>&type_f=<?= (int) $ftype ?>&q=<?= urlencode($fq) ?>&view=1"
+       target="_blank">
+      <i class="fas fa-file-pdf"></i> تصدير تقرير PDF
+    </a>
   </div>
 </div>
 
@@ -431,6 +460,12 @@ include '../includes/office_header.php';
       <input type="hidden" name="tab" value="requests">
       <div class="col-auto flex-grow-1">
         <input type="text" name="q" class="form-control form-control-sm" placeholder="بحث بالعميل أو الهوية أو الخدمة…" value="<?= e($fq) ?>">
+      </div>
+      <div class="col-auto">
+        <input type="date" name="from" class="form-control form-control-sm" title="من تاريخ" value="<?= e($ffrom) ?>">
+      </div>
+      <div class="col-auto">
+        <input type="date" name="to" class="form-control form-control-sm" title="إلى تاريخ" value="<?= e($fto) ?>">
       </div>
       <div class="col-auto">
         <select name="status_f" class="form-select form-select-sm">
@@ -716,10 +751,10 @@ include '../includes/office_header.php';
             <div class="form-text">لا توجد أنواع بعد — أضِفها من تبويب «أنواع الخدمات».</div>
             <?php endif; ?>
           </div>
-          <div class="mb-1"><label class="form-label fw-semibold">السعر الأساسي (قبل الضريبة) — ﷼</label>
+          <div class="mb-1"><label class="form-label fw-semibold">السعر شامل ضريبة القيمة المضافة (15%) — ﷼</label>
             <input type="number" name="price" step="0.01" min="0" class="form-control" required
-                   value="<?= e($edit_svc['price'] ?? '') ?>" id="svc_price"></div>
-          <div class="form-text">الإجمالي المعروض للعميل = السعر + ضريبة القيمة المضافة 15%.
+                   value="<?= $edit_svc ? e(number_format($edit_svc['price'] * (1 + (($edit_svc['vat_rate'] ?: 15)) / 100), 2, '.', '')) : '' ?>" id="svc_price"></div>
+          <div class="form-text">هذا هو السعر الذي يراه العميل ويدفعه كاملاً. السعر الأساسي قبل الضريبة
             <span id="svc_preview" class="fw-bold text-dark"></span></div>
         </div>
         <div class="modal-footer">
@@ -816,7 +851,7 @@ include '../includes/office_header.php';
   // ── معاينة سعر الخدمة ──
   var pr = document.getElementById('svc_price');
   var pv = document.getElementById('svc_preview');
-  function upd(){ if(!pr||!pv) return; var p=parseFloat(pr.value||0); pv.textContent = p? '= ' + (p*1.15).toFixed(2) + ' ﷼' : ''; }
+  function upd(){ if(!pr||!pv) return; var p=parseFloat(pr.value||0); pv.textContent = p? '= ' + (p/1.15).toFixed(2) + ' ﷼' : ''; }
   if(pr){ pr.addEventListener('input', upd); upd(); }
 
   <?php if ($edit_svc): ?>
