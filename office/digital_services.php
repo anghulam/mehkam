@@ -453,9 +453,27 @@ include '../includes/office_header.php';
   <?php endif; ?>
 </ul>
 
-<?php if ($tab === 'requests'): ?>
+<?php if ($tab === 'requests'):
+  // فترات سريعة — تضبط من/إلى مباشرةً مع الإبقاء على باقي الفلاتر (بحث/حالة/نوع)
+  $todayStr = date('Y-m-d');
+  $periods = [
+      'اليوم'      => [$todayStr, $todayStr],
+      'آخر 7 أيام' => [date('Y-m-d', strtotime('-6 days')), $todayStr],
+      'هذا الشهر'  => [date('Y-m-01'), $todayStr],
+      'آخر 30 يوم' => [date('Y-m-d', strtotime('-29 days')), $todayStr],
+      'كل الفترات' => ['', ''],
+  ];
+  $periodUrl = fn($f, $t) => 'digital_services.php?tab=requests&from=' . urlencode($f) . '&to=' . urlencode($t)
+      . '&status_f=' . urlencode($fstat) . '&type_f=' . (int) $ftype . '&q=' . urlencode($fq);
+?>
 <div class="card mb-3">
   <div class="card-body py-2">
+    <div class="btn-group btn-group-sm mb-2 flex-wrap" role="group">
+      <?php foreach ($periods as $plabel => [$pf, $pt]):
+        $active = $pf === $ffrom && $pt === $fto; ?>
+      <a href="<?= e($periodUrl($pf, $pt)) ?>" class="btn <?= $active ? 'btn-primary' : 'btn-outline-secondary' ?>"><?= e($plabel) ?></a>
+      <?php endforeach; ?>
+    </div>
     <form class="row g-2 align-items-center" method="GET">
       <input type="hidden" name="tab" value="requests">
       <div class="col-auto flex-grow-1">
