@@ -6,21 +6,25 @@ $page_title = 'التنبيهات';
 $oid = (int)$_SESSION['office_id'];
 $uid = (int)$_SESSION['user_id'];
 
+// تنبيه موجَّه لي شخصياً (user_id=$uid)، أو تنبيه عام لكل المكتب (office_id=$oid
+// بلا مستخدم محدَّد) — لا نعرض لموظّف تنبيهاً وُجِّه أصلاً لموظّف آخر بعينه
+$scope = "(user_id=$uid OR (office_id=$oid AND user_id IS NULL))";
+
 if (isset($_GET['read'])) {
-    $conn->query("UPDATE notifications SET is_read=1 WHERE id=".(int)$_GET['read']." AND (office_id=$oid OR user_id=$uid)");
+    $conn->query("UPDATE notifications SET is_read=1 WHERE id=".(int)$_GET['read']." AND $scope");
     header("Location: notifications.php"); exit;
 }
 if (isset($_GET['read_all'])) {
-    $conn->query("UPDATE notifications SET is_read=1 WHERE office_id=$oid OR user_id=$uid");
+    $conn->query("UPDATE notifications SET is_read=1 WHERE $scope");
     header("Location: notifications.php"); exit;
 }
 if (isset($_GET['delete'])) {
-    $conn->query("DELETE FROM notifications WHERE id=".(int)$_GET['delete']." AND (office_id=$oid OR user_id=$uid)");
+    $conn->query("DELETE FROM notifications WHERE id=".(int)$_GET['delete']." AND $scope");
     header("Location: notifications.php"); exit;
 }
 
-$notifs   = $conn->query("SELECT * FROM notifications WHERE (office_id=$oid OR user_id=$uid) ORDER BY created_at DESC");
-$unread   = $conn->query("SELECT COUNT(*) c FROM notifications WHERE (office_id=$oid OR user_id=$uid) AND is_read=0")->fetch_assoc()['c'];
+$notifs   = $conn->query("SELECT * FROM notifications WHERE $scope ORDER BY created_at DESC");
+$unread   = $conn->query("SELECT COUNT(*) c FROM notifications WHERE $scope AND is_read=0")->fetch_assoc()['c'];
 
 include '../includes/office_header.php';
 ?>

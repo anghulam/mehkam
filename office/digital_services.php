@@ -302,6 +302,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $collected = !isset($_POST['collected']) || $_POST['collected'] === '1';
             [$invId, $invErr] = svc_make_invoice($conn, $oid, $reqId, $collected);
 
+            // تنبيه لِمن يملك صلاحية «إضافة طلب خدمة» فقط (مدخلو بيانات الخدمات الرقمية)
+            // — موجَّه لكل واحد منهم تحديداً بـ user_id، لا تنبيهاً عاماً يراه كل موظفي
+            // المكتب — ولا يُرسَل لمن أنشأ الطلب بنفسه لتفادي تنبيهه بإجرائه هو.
+            $clientNameForNotif = $clientId ? (dbVal($conn, "SELECT full_name FROM clients WHERE id=$clientId") ?: '—') : '—';
+            $notifMsg = $conn->real_escape_string(
+                "خدمة: {$svc['name']} — العميل: $clientNameForNotif — الإجمالي: " . number_format($total, 2) . " ﷼ — بواسطة: $uname"
+            );
+            foreach (usersWithPermission($conn, $oid, 'services', 'add') as $_nu) {
+                if ((int) $_nu['id'] === $uid) continue;
+                $conn->query("INSERT INTO notifications (user_id,office_id,title,message,type)
+                    VALUES (" . (int) $_nu['id'] . ",$oid,'طلب خدمة رقمية جديد','$notifMsg','info')");
+            }
+
             $_retTo = trim($_POST['return_to'] ?? '');
             if (!preg_match('/^[a-z_]+\.php(\?[a-z0-9_=&%.\-]*)?$/i', $_retTo)) $_retTo = '';
             if ($_retTo !== '') {
