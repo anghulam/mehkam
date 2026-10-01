@@ -462,10 +462,10 @@ include '../includes/office_header.php';
         <input type="text" name="q" class="form-control form-control-sm" placeholder="بحث بالعميل أو الهوية أو الخدمة…" value="<?= e($fq) ?>">
       </div>
       <div class="col-auto">
-        <input type="date" name="from" class="form-control form-control-sm" title="من تاريخ" value="<?= e($ffrom) ?>">
+        <input type="date" name="from" class="form-control form-control-sm mk-plain-date" placeholder="من" value="<?= e($ffrom) ?>">
       </div>
       <div class="col-auto">
-        <input type="date" name="to" class="form-control form-control-sm" title="إلى تاريخ" value="<?= e($fto) ?>">
+        <input type="date" name="to" class="form-control form-control-sm mk-plain-date" placeholder="إلى" value="<?= e($fto) ?>">
       </div>
       <div class="col-auto">
         <select name="status_f" class="form-select form-select-sm">
