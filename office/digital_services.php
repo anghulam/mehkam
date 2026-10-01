@@ -164,13 +164,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $sid   = (int) ($_POST['id'] ?? 0);
         $name  = $conn->real_escape_string(trim($_POST['name'] ?? ''));
         $desc  = $conn->real_escape_string(trim($_POST['description'] ?? ''));
-        $price = round((float) ($_POST['price'] ?? 0), 2);
+        $priceIncl = round((float) ($_POST['price'] ?? 0), 2); // السعر الذي يدخله المكتب — شامل الضريبة
         $tid   = (int) ($_POST['type_id'] ?? 0);
         if ($tid && !$conn->query("SELECT id FROM office_service_types WHERE id=$tid AND office_id=$oid")->num_rows) $tid = 0;
         $tidSql = $tid ?: 'NULL';
-        if ($name === '' || $price < 0) {
+        if ($name === '' || $priceIncl < 0) {
             header("Location: digital_services.php?tab=catalog&msg=invalid"); exit;
         }
+        // نخزّن داخلياً السعر الأساسي قبل الضريبة كما في بقية النظام (الفواتير وحساب ض.ق.م)
+        $rate = $VAT;
+        if ($sid) {
+            $existingRate = $conn->query("SELECT vat_rate FROM office_services WHERE id=$sid AND office_id=$oid")->fetch_assoc();
+            if ($existingRate && $existingRate['vat_rate']) $rate = (float) $existingRate['vat_rate'];
+        }
+        $price = round($priceIncl / (1 + $rate / 100), 2);
         if ($sid) {
             $ok = $conn->query("UPDATE office_services SET name='$name', description='$desc', price=$price, type_id=$tidSql
                 WHERE id=$sid AND office_id=$oid");
@@ -716,10 +723,10 @@ include '../includes/office_header.php';
             <div class="form-text">لا توجد أنواع بعد — أضِفها من تبويب «أنواع الخدمات».</div>
             <?php endif; ?>
           </div>
-          <div class="mb-1"><label class="form-label fw-semibold">السعر الأساسي (قبل الضريبة) — ﷼</label>
+          <div class="mb-1"><label class="form-label fw-semibold">السعر شامل ضريبة القيمة المضافة (15%) — ﷼</label>
             <input type="number" name="price" step="0.01" min="0" class="form-control" required
-                   value="<?= e($edit_svc['price'] ?? '') ?>" id="svc_price"></div>
-          <div class="form-text">الإجمالي المعروض للعميل = السعر + ضريبة القيمة المضافة 15%.
+                   value="<?= $edit_svc ? e(number_format($edit_svc['price'] * (1 + (($edit_svc['vat_rate'] ?: 15)) / 100), 2, '.', '')) : '' ?>" id="svc_price"></div>
+          <div class="form-text">هذا هو السعر الذي يراه العميل ويدفعه كاملاً. السعر الأساسي قبل الضريبة
             <span id="svc_preview" class="fw-bold text-dark"></span></div>
         </div>
         <div class="modal-footer">
@@ -816,7 +823,7 @@ include '../includes/office_header.php';
   // ── معاينة سعر الخدمة ──
   var pr = document.getElementById('svc_price');
   var pv = document.getElementById('svc_preview');
-  function upd(){ if(!pr||!pv) return; var p=parseFloat(pr.value||0); pv.textContent = p? '= ' + (p*1.15).toFixed(2) + ' ﷼' : ''; }
+  function upd(){ if(!pr||!pv) return; var p=parseFloat(pr.value||0); pv.textContent = p? '= ' + (p/1.15).toFixed(2) + ' ﷼' : ''; }
   if(pr){ pr.addEventListener('input', upd); upd(); }
 
   <?php if ($edit_svc): ?>
