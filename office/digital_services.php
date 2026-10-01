@@ -352,10 +352,14 @@ $activeServices = array_values(array_filter($services, fn($s) => $s['is_active']
 $fstat = $_GET['status_f'] ?? '';
 $ftype = (int) ($_GET['type_f'] ?? 0);
 $fq    = trim($_GET['q'] ?? '');
+$ffrom = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['from'] ?? '') ? $_GET['from'] : '';
+$fto   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['to']   ?? '') ? $_GET['to']   : '';
 $w = "sr.office_id=$oid";
 if (in_array($fstat, ['new', 'in_progress', 'completed', 'cancelled'], true)) $w .= " AND sr.status='$fstat'";
 if ($ftype) $w .= " AND os.type_id=$ftype";
 if ($fq !== '') { $qe = $conn->real_escape_string($fq); $w .= " AND (cl.full_name LIKE '%$qe%' OR cl.id_number LIKE '%$qe%' OR sr.service_name LIKE '%$qe%')"; }
+if ($ffrom !== '') $w .= " AND DATE(sr.created_at) >= '" . $conn->real_escape_string($ffrom) . "'";
+if ($fto   !== '') $w .= " AND DATE(sr.created_at) <= '" . $conn->real_escape_string($fto)   . "'";
 
 $requests = $conn->query("SELECT sr.*, cl.full_name client_name, cl.id_number client_idn,
         c.case_number, inv.invoice_number, inv.public_token, ot.name type_name
@@ -405,6 +409,11 @@ include '../includes/office_header.php';
       <i class="fas fa-list-check"></i> إضافة خدمة
     </button>
     <?php endif; ?>
+    <a class="btn btn-outline-danger"
+       href="digital_services_pdf.php?from=<?= e($ffrom ?: date('Y-m-d', strtotime('-30 days'))) ?>&to=<?= e($fto ?: date('Y-m-d')) ?>&status_f=<?= e($fstat) ?>&type_f=<?= (int) $ftype ?>&q=<?= urlencode($fq) ?>&view=1"
+       target="_blank">
+      <i class="fas fa-file-pdf"></i> تصدير تقرير PDF
+    </a>
   </div>
 </div>
 
@@ -451,6 +460,12 @@ include '../includes/office_header.php';
       <input type="hidden" name="tab" value="requests">
       <div class="col-auto flex-grow-1">
         <input type="text" name="q" class="form-control form-control-sm" placeholder="بحث بالعميل أو الهوية أو الخدمة…" value="<?= e($fq) ?>">
+      </div>
+      <div class="col-auto">
+        <input type="date" name="from" class="form-control form-control-sm" title="من تاريخ" value="<?= e($ffrom) ?>">
+      </div>
+      <div class="col-auto">
+        <input type="date" name="to" class="form-control form-control-sm" title="إلى تاريخ" value="<?= e($fto) ?>">
       </div>
       <div class="col-auto">
         <select name="status_f" class="form-select form-select-sm">
