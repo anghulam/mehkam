@@ -5,17 +5,12 @@ require_once '../includes/content_helper.php';
 $page_title = 'الأسعار والباقات | '.sc($conn,'site_name','OLFS');
 $page_desc  = 'باقات '.sc($conn,'site_name','OLFS').' لإدارة مكاتب المحاماة — تجربة مجانية 14 يوماً';
 
-// إصلاح تعارض قديم: باقة كانت تُظهر "حتى X مستخدمين" وبنفس الوقت نص ثابت "مستخدمون غير محدودون"
-try {
-    $conn->query("UPDATE packages SET
-        max_users = 999,
-        features  = TRIM(BOTH ',' FROM REPLACE(REPLACE(features,',مستخدمون غير محدودون',''),'مستخدمون غير محدودون',''))
-        WHERE features LIKE '%مستخدمون غير محدودون%'");
-} catch (\Throwable $e) {}
+require_once '../includes/module_helper.php';
+require_once 'includes/pricing_ui.php';
 
-$pkgs = [];
-$res  = $conn->query("SELECT * FROM packages WHERE is_active=1 ORDER BY price_yearly ASC");
-if ($res) while ($p = $res->fetch_assoc()) $pkgs[] = $p;
+// فهرس الباقات: الحدود + الميزات الأساسية + كل الموديولات المضمّنة في كل باقة (يعكس تخصيص الأدمن مباشرة)
+$cat  = pkg_public_catalog($conn);
+$pkgs = $cat['packages'];
 
 // أسعار الميزات للباقة المخصصة
 $fp = []; $fp_base_u = 3; $fp_base_c = 50; $fp_base_p = 0;
@@ -63,99 +58,19 @@ include 'includes/header.php';
     </div>
     <?php else: ?>
 
-    <!-- Packages Grid -->
-    <div class="row g-4 justify-content-center mb-5">
-      <?php
-      $btn_classes = ['lx-pbtn-out', 'lx-pbtn-gold', 'lx-pbtn-navy'];
-      $pkg_bgs     = ['#334155', 'linear-gradient(135deg,#b8860b,#e8c040)', '#0f2040'];
-      $pkg_icons   = ['seedling', 'star', 'building'];
-      $pkg_icclr   = ['#fff', '#080c14', '#fff'];
-
-      foreach ($pkgs as $i => $p):
-        $featured   = ($i == 1);
-        $features   = array_filter(array_map('trim', explode(',', $p['features'] ?? '')));
-        $yr         = (int) $p['price_yearly'];
-        $btn_cls    = $btn_classes[$i] ?? 'lx-pbtn-out';
-        $pkg_bg     = $pkg_bgs[$i]    ?? '#334155';
-        $pkg_icon   = $pkg_icons[$i]  ?? 'box';
-        $pkg_iclr   = $pkg_icclr[$i]  ?? '#fff';
-      ?>
-      <div class="col-md-6 col-lg-4">
-        <div class="lx-pcard <?= $featured ? 'feat' : '' ?> h-100">
-
-          <div class="lx-phead">
-            <div class="lx-pbadge">
-              <?= $featured ? '⭐ الأكثر شيوعاً' : e($p['name']) ?>
-            </div>
-            <div class="lx-picon-row">
-              <div class="lx-picon" style="background:<?= $pkg_bg ?>">
-                <i class="fas fa-<?= $pkg_icon ?>" style="color:<?= $pkg_iclr ?>"></i>
-              </div>
-              <div class="lx-pname"><?= e($p['name']) ?></div>
-            </div>
-            <?php if ($yr == 0): ?>
-            <div class="lx-pprice">
-              <span class="lx-pamount" style="font-size:22px">بالتفاهم</span>
-            </div>
-            <div class="lx-pyearly">سعر مخصص حسب الاحتياج</div>
-            <?php else: ?>
-            <div class="lx-pprice">
-              <span class="lx-pamount"><?= number_format($yr) ?></span>
-              <span class="lx-pcur">ر.س</span>
-              <span class="lx-pper">/ سنة</span>
-            </div>
-            <?php endif; ?>
-          </div>
-
-          <div class="lx-psep"></div>
-
-          <div class="lx-pbody">
-            <ul class="lx-pfeats list-unstyled" style="margin-bottom: 15px;">
-              <li>
-                <div class="lx-pcheck">✓</div>
-                <?= ((int)$p['max_users'] == 0 || (int)$p['max_users'] >= 999) ? 'مستخدمون <strong>غير محدودين</strong>' : 'حتى <strong>'.(int)$p['max_users'].'</strong> مستخدمين' ?>
-              </li>
-              <li>
-                <div class="lx-pcheck">✓</div>
-                <?= ((int)$p['max_cases'] == 0 || (int)$p['max_cases'] >= 999) ? 'قضايا <strong>غير محدودة</strong>' : 'حتى <strong>'.(int)$p['max_cases'].'</strong> قضية' ?>
-              </li>
-              <?php foreach ($features as $feat): ?>
-              <li>
-                <div class="lx-pcheck">✓</div>
-                <?= e($feat) ?>
-              </li>
-              <?php endforeach; ?>
-              <?php if ($yr > 0): ?>
-              <li><div class="lx-pcheck">✓</div>تجربة مجانية 14 يوم</li>
-              <?php endif; ?>
-            </ul>
-
-            <?php if ($yr == 0): ?>
-            <a href="register.php?package=<?= (int)$p['id'] ?>" class="lx-pbtn <?= $btn_cls ?>">
-              <i class="fas fa-headset me-1"></i>اطلب عرض سعر
-            </a>
-            <p class="text-center mt-3 mb-0" style="font-size:12px;color:var(--t3)">
-              سيتواصل معك فريقنا لتحديد السعر
-            </p>
-            <?php else: ?>
-            <a href="register.php?package=<?= (int)$p['id'] ?>&billing=yearly" class="lx-pbtn <?= $btn_cls ?>">
-              ابدأ التجربة المجانية
-            </a>
-            <p class="text-center mt-3 mb-0" style="font-size:12px;color:var(--t3)">
-              14 يوم مجاني · بدون بطاقة ائتمان
-            </p>
-            <?php endif; ?>
-          </div>
-
-        </div>
-      </div>
-      <?php endforeach; ?>
-    </div>
+    <!-- Packages Grid (يُبنى من الباقات الفعلية — يعكس تفعيل/إيقاف الأدمن للميزات والموديولات) -->
+    <?php pricing_ui_styles(); pricing_ui_cards($cat, ['compare_href' => '#compare']); ?>
+    <div style="height:46px"></div>
 
     <!-- Comparison note -->
     <div class="text-center mb-5" style="color:var(--t3);font-size:14px">
       <i class="fas fa-shield-alt me-2" style="color:var(--gold3)"></i>
       جميع الباقات تشمل: SSL آمن · دعم فني · تحديثات تلقائية · نسخ احتياطي يومي
+    </div>
+
+    <!-- جدول المقارنة الكامل بما فيه الموديولات -->
+    <div id="compare" style="scroll-margin-top:90px;margin-bottom:56px">
+      <?php pricing_ui_compare($cat, ['id' => 'compare']); ?>
     </div>
 
     <?php endif; ?>

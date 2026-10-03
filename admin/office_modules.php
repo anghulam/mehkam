@@ -243,6 +243,15 @@ $om_res = $conn->query("SELECT om.office_id, om.module_key, (om.is_enabled=1 AND
     FROM office_modules om LEFT JOIN offices o ON o.id=om.office_id");
 $om_map = [];
 while ($r = $om_res->fetch_assoc()) $om_map[$r['office_id']][$r['module_key']] = ['enabled'=>(int)$r['is_enabled'], 'price'=>$r['price']];
+// موديولات مضمّنة في باقة المكتب (mod_<key> = 1) — تُحتسب مفعّلة ما لم تكن مفعّلة أصلاً بشكل مستقل
+$pkgq = $conn->query("SELECT o.id office_id, SUBSTRING(pf.feature_key,5) module_key
+    FROM offices o JOIN package_features pf ON pf.package_id=o.package_id
+    WHERE pf.feature_key LIKE 'mod\_%' AND pf.feature_value='1'");
+if ($pkgq) while ($r = $pkgq->fetch_assoc()) {
+    if (empty($om_map[$r['office_id']][$r['module_key']]['enabled'])) {
+        $om_map[$r['office_id']][$r['module_key']] = ['enabled'=>1, 'price'=>null, 'via_pkg'=>1];
+    }
+}
 
 $purchases = [];
 $puq = $conn->query("SELECT mp.*, o.name office_name, m.name module_name
@@ -540,6 +549,13 @@ function openOfficeMod(officeId, officeName) {
     var st = (OM_MAP[officeId] && OM_MAP[officeId][m.module_key]) || { enabled: 0, price: null };
     var row = document.createElement('div');
     row.className = 'd-flex align-items-center gap-2 py-2 border-bottom';
+    if (st.via_pkg) { // مضمّن في باقة المكتب: يُدار من صفحة الباقات لا من هنا
+      row.innerHTML =
+        '<div class="flex-grow-1"><div class="fw-semibold" style="font-size:13px"><i class="fas fa-' + m.icon + ' me-1 text-primary"></i>' + m.name + '</div></div>' +
+        '<span class="badge bg-success bg-opacity-10 text-success"><i class="fas fa-box-open me-1"></i>مضمّن في الباقة</span>';
+      body.appendChild(row);
+      return;
+    }
     row.innerHTML =
       '<div class="flex-grow-1">' +
         '<div class="fw-semibold" style="font-size:13px"><i class="fas fa-' + m.icon + ' me-1 text-primary"></i>' + m.name + '</div>' +

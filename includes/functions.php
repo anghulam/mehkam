@@ -145,9 +145,18 @@ function hasModule($conn, $office_id, $module_key) {
             $q = $conn->query("SELECT is_enabled FROM office_modules WHERE office_id=$office_id AND module_key='$m' LIMIT 1");
         } catch (\Throwable $e) { $q = false; }
     }
-    if (!$q) { $_mod_cache[$key] = false; return false; } // الجدول غير موجود بعد → معطّل بأمان
-    $row = $q->fetch_assoc();
+    $row = $q ? $q->fetch_assoc() : null;
     $result = $row ? (int)$row['is_enabled'] === 1 : false;
+    if (!$result) {
+        // لم يُفعَّل للمكتب بشكل مستقل (أدمن/متجر/باقة مخصصة) → مفعّل إن كانت باقته تضمّنه
+        // (mod_<key> = 1 في مزايا الباقة). التضمين في الباقة يمنح الوصول، وإيقافه يكون بإزالته من الباقة.
+        try {
+            $pq = $conn->query("SELECT pf.feature_value FROM offices o
+                JOIN package_features pf ON pf.package_id=o.package_id
+                WHERE o.id=$office_id AND pf.feature_key='mod_$m' LIMIT 1");
+            if ($pq && ($pr = $pq->fetch_assoc())) $result = $pr['feature_value'] === '1';
+        } catch (\Throwable $e) {}
+    }
     $_mod_cache[$key] = $result;
     return $result;
 }
