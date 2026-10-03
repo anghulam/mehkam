@@ -5,6 +5,7 @@ require_once '../includes/content_helper.php';
 require_once '../includes/telegram.php';
 require_once '../includes/whatsapp.php';
 require_once '../includes/module_helper.php';
+pkg_sync_limits($conn);
 requireOffice();
 $page_title = 'الملف الشخصي';
 $oid  = (int)$_SESSION['office_id'];
@@ -320,7 +321,7 @@ if ($office['subscription_end']) {
 }
 
 // جميع الباقات للترقية
-$all_packages = $conn->query("SELECT * FROM packages WHERE is_active=1 ORDER BY price_yearly ASC");
+$all_packages = $conn->query("SELECT * FROM packages WHERE is_active=1 AND (name NOT LIKE 'مخصصة —%' OR id=" . (int)($office['package_id'] ?? 0) . ") ORDER BY price_yearly ASC");
 
 // طلب الباقة المعلق
 $pending_request = $conn->query("SELECT pr.*,p.name req_pkg_name FROM package_requests pr LEFT JOIN packages p ON pr.requested_package_id=p.id WHERE pr.office_id=$oid ORDER BY pr.created_at DESC LIMIT 1")->fetch_assoc();

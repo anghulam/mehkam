@@ -1,8 +1,16 @@
 <?php
 require_once '../includes/functions.php';
 require_once '../config/db.php';
+require_once '../includes/module_helper.php';
 requireAdmin();
 $page_title = 'الباقات وتخصيص المزايا';
+
+// ميزات الباقة الأساسية + الموديولات الإضافية (تُقرأ ديناميكياً من جدول modules — أي موديول جديد يظهر هنا تلقائياً)
+$coreFeats = pkg_core_features();
+$modGroups = pkg_modules_grouped($conn);
+$modAll    = [];
+foreach ($modGroups as $_rows) foreach ($_rows as $_m) $modAll[$_m['module_key']] = $_m;
+$modTotal  = count($modAll);
 
 /* ── حذف باقة ── */
 if (isset($_GET['delete'])) {
@@ -34,14 +42,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $conn->query("INSERT INTO packages (name,price_monthly,price_yearly,max_users,max_cases,is_active)
                           VALUES ('$name',0,$py,3,50,$active)");
             $id = $conn->insert_id;
-            // إدراج مزايا افتراضية للباقة الجديدة
-            $defaults = [
-                'max_cases'=>'50','max_clients'=>'100','max_users'=>'3','storage_mb'=>'0',
-                'has_finance'=>'1','has_contracts'=>'0','has_poa'=>'0','has_library'=>'0',
-                'has_correspondence'=>'0','has_archive'=>'0','has_ai'=>'0',
-                'has_invoices'=>'0','has_reports'=>'0','has_api'=>'0',
-                'has_precedents'=>'0','has_digital_services'=>'0',
-            ];
+            // إدراج مزايا افتراضية للباقة الجديدة (كل الميزات الأساسية والموديولات مُوقَفة عدا المالية)
+            $defaults = ['max_cases'=>'50','max_clients'=>'100','max_users'=>'3','storage_mb'=>'0'];
+            foreach ($coreFeats as $ck => $_) $defaults[$ck] = ($ck === 'has_finance') ? '1' : '0';
+            foreach ($modAll as $mk => $_) $defaults['mod_' . $mk] = '0';
             foreach ($defaults as $k => $v) {
                 $conn->query("INSERT IGNORE INTO package_features (package_id,feature_key,feature_value)
                               VALUES ($id,'$k','$v')");
@@ -63,11 +67,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                           ON DUPLICATE KEY UPDATE feature_value='$val'");
         }
 
-        // الحقول البوليانية
-        $boolKeys = ['has_finance','has_contracts','has_poa','has_library',
-                     'has_correspondence','has_archive','has_ai',
-                     'has_invoices','has_reports','has_api',
-                     'has_precedents','has_digital_services'];
+        // الحقول البوليانية: الميزات الأساسية + كل الموديولات الإضافية المسجّلة (mod_<key>)
+        $boolKeys = array_keys($coreFeats);
+        foreach (array_keys($modAll) as $mk) $boolKeys[] = 'mod_' . $mk;
         foreach ($boolKeys as $key) {
             $val = isset($_POST[$key]) ? '1' : '0';
             $conn->query("INSERT INTO package_features (package_id,feature_key,feature_value)
@@ -75,35 +77,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                           ON DUPLICATE KEY UPDATE feature_value='$val'");
         }
 
-        // تحديث max_users و max_cases في جدول packages أيضاً (للتوافق)
-        $mu = max(1, (int)($_POST['max_users'] ?? 3));
+        // تحديث max_users و max_cases في جدول packages أيضاً (للتوافق) — 0 تعني «غير محدود» وتُحفظ كما هي
+        $mu = max(0, (int)($_POST['max_users'] ?? 3));
         $mc = max(0, (int)($_POST['max_cases'] ?? 50));
 
-        // بناء قائمة الميزات المفعّلة لعمود features في packages (يُقرأ من pricing.php)
-        $featLabelMap = [
-            'has_finance'        => 'الشؤون المالية',
-            'has_invoices'       => 'الفواتير',
-            'has_contracts'      => 'العقود',
-            'has_poa'            => 'الوكالات',
-            'has_correspondence' => 'الصادر والوارد',
-            'has_library'        => 'المكتبة القانونية',
-            'has_archive'        => 'الأرشيف',
-            'has_ai'             => 'المساعد الذكي AI',
-            'has_reports'        => 'التقارير المتقدمة',
-            'has_api'            => 'API',
-            'has_precedents'     => 'السوابق القضائية',
-            'has_digital_services' => 'الخدمات الرقمية',
-        ];
+        // بناء قائمة الميزات المفعّلة لعمود features في packages (تقرأها صفحات التسجيل وترقية المكتب)
         $enabledLabels = [];
-        foreach ($featLabelMap as $fk => $fl) {
-            if (isset($_POST[$fk])) $enabledLabels[] = $fl;
+        foreach ($coreFeats as $fk => $fd) {
+            if (isset($_POST[$fk])) $enabledLabels[] = $fd[0];
         }
+        $enabledMods = 0;
+        foreach (array_keys($modAll) as $mk) if (isset($_POST['mod_' . $mk])) $enabledMods++;
+        if ($enabledMods > 0) $enabledLabels[] = $enabledMods . ' موديول إضافي';
         $featuresStr = $conn->real_escape_string(implode(',', $enabledLabels));
         $conn->query("UPDATE packages SET max_users=$mu, max_cases=$mc, features='$featuresStr' WHERE id=$pid");
 
         header("Location: packages.php?msg=features_saved&pkg=$pid"); exit;
     }
 }
+
+/* ── مزامنة عمودَي packages.max_users/max_cases مع مزايا الباقة (المصدر الفعلي) ──
+   كانت الصيغة القديمة تحوّل 0 («غير محدود») إلى 1 في عمود packages.max_users فتظهر الباقة «مستخدم واحد» علناً */
+try {
+    foreach (['max_users', 'max_cases'] as $_lk) {
+        $conn->query("UPDATE packages p JOIN package_features pf ON pf.package_id=p.id AND pf.feature_key='$_lk'
+            SET p.$_lk = CAST(pf.feature_value AS UNSIGNED)
+            WHERE pf.feature_value REGEXP '^[0-9]+$' AND p.$_lk <> CAST(pf.feature_value AS UNSIGNED)");
+    }
+} catch (\Throwable $e) {}
 
 /* ── جلب الباقات مع مزاياها ── */
 $packages = $conn->query("SELECT p.*, (SELECT COUNT(*) FROM offices WHERE package_id=p.id) offices_count FROM packages p ORDER BY p.price_yearly ASC");
@@ -133,7 +134,7 @@ if (isset($_GET['features'])) {
 
 include '../includes/admin_header.php';
 
-// تعريف جميع المزايا مع تصنيفاتها
+// تعريف الحدود الكمية + الميزات الأساسية (المصدر المشترك: pkg_core_features)
 $featureGroups = [
     'الحدود الكمية' => [
         'max_cases'   => ['القضايا (الحد الأقصى)',    'gavel',        'number', 'قضية — 0 = غير محدود'],
@@ -141,21 +142,33 @@ $featureGroups = [
         'max_users'   => ['المستخدمون (الحد الأقصى)', 'users',        'number', 'مستخدم — 0 = غير محدود'],
         'storage_mb'  => ['التخزين (ميغابايت)',        'hdd',          'number', 'MB — 0 = بدون تخزين'],
     ],
-    'الوحدات الوظيفية' => [
-        'has_finance'       => ['الشؤون المالية',     'wallet',         'bool', 'تتبع الإيرادات والمصروفات'],
-        'has_invoices'      => ['الفواتير',            'file-invoice',   'bool', 'إنشاء وإرسال الفواتير'],
-        'has_contracts'     => ['العقود',              'file-signature', 'bool', 'إدارة العقود القانونية'],
-        'has_poa'           => ['الوكالات',            'stamp',          'bool', 'إدارة وكالات التفويض'],
-        'has_correspondence'=> ['الصادر والوارد',      'envelope',       'bool', 'إدارة المراسلات الرسمية'],
-        'has_library'       => ['المكتبة القانونية',   'book-open',      'bool', 'الأنظمة والنماذج القانونية'],
-        'has_archive'       => ['الأرشيف',             'archive',        'bool', 'رفع وحفظ الملفات'],
-        'has_ai'            => ['المساعد الذكي',       'robot',          'bool', 'مساعد AI قانوني متخصص'],
-        'has_reports'       => ['التقارير المتقدمة',   'chart-bar',      'bool', 'صفحة تقارير شاملة (قضايا، جلسات، مهام، عملاء، مالية) بفلترة من/إلى تاريخ + أداء الفريق'],
-        'has_api'           => ['API',                 'code',           'bool', 'وصول لواجهة برمجة التطبيقات لدمج الأنظمة الخارجية'],
-        'has_precedents'    => ['السوابق القضائية',    'scale-balanced', 'bool', 'قاعدة بيانات السوابق والأحكام القضائية'],
-        'has_digital_services' => ['الخدمات الرقمية',  'hand-holding-dollar', 'bool', 'كتالوج الخدمات الرقمية وطلبات العملاء'],
-    ],
+    'الوحدات الوظيفية' => [],
 ];
+foreach ($coreFeats as $_ck => [$_cl, $_ci, $_ch]) $featureGroups['الوحدات الوظيفية'][$_ck] = [$_cl, $_ci, 'bool', $_ch];
+
+/** بطاقة تبديل (مفتاح تشغيل/إيقاف) لميزة أو موديول داخل نافذة تخصيص الباقة */
+function pk_toggle_tile($key, $label, $icon, $hint, $isOn, $c1, $c2, $isMod = false) {
+    $bg  = $isOn ? "linear-gradient(135deg,{$c1}08,{$c2}12)" : '#fff';
+    $grd = "linear-gradient(135deg,{$c1},{$c2})";
+    ob_start(); ?>
+<div class="col-md-6 pk-tile-col" data-search="<?= e(mb_strtolower($label . ' ' . $hint . ' ' . $key)) ?>">
+  <label class="feat-toggle <?= $isOn ? 'feat-on' : '' ?><?= $isMod ? ' mod-toggle' : '' ?>" data-key="<?= e($key) ?>"
+         style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:2px solid <?= $isOn ? $c1 : '#e2e8f0' ?>;border-radius:12px;cursor:pointer;background:<?= $bg ?>;transition:all .2s;user-select:none">
+    <input type="checkbox" name="<?= e($key) ?>" id="feat_<?= e($key) ?>" <?= $isOn ? 'checked' : '' ?> style="display:none">
+    <div class="feat-icon" style="width:36px;height:36px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;background:<?= $isOn ? $grd : '#f1f5f9' ?>;color:<?= $isOn ? '#fff' : '#94a3b8' ?>;transition:all .2s">
+      <i class="fas fa-<?= e($icon ?: 'puzzle-piece') ?>"></i>
+    </div>
+    <div style="flex:1;min-width:0">
+      <div class="feat-label" style="font-size:13px;font-weight:700;color:<?= $isOn ? '#0c1b36' : '#64748b' ?>;transition:color .2s"><?= e($label) ?></div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="<?= e($hint) ?>"><?= e($hint) ?></div>
+    </div>
+    <div class="toggle-sw" style="width:44px;height:24px;border-radius:50px;flex-shrink:0;background:<?= $isOn ? $grd : '#e2e8f0' ?>;position:relative;transition:background .25s">
+      <div class="toggle-knob" style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:3px;transition:left .25s;box-shadow:0 1px 4px rgba(0,0,0,.2);left:<?= $isOn ? '23px' : '3px' ?>"></div>
+    </div>
+  </label>
+</div>
+<?php return ob_get_clean();
+}
 ?>
 
 <?php if (isset($_GET['msg'])): ?>
@@ -247,11 +260,67 @@ $featureGroups = [
           </tr>
           <?php endforeach; ?>
           <?php endforeach; ?>
+
+          <?php if ($modGroups): ?>
+          <!-- ── الموديولات الإضافية (ديناميكية من جدول modules) ── -->
+          <tr>
+            <td colspan="<?= count($pkgs)+1 ?>" style="background:#1e1b4b;padding:10px 20px;border:none">
+              <div class="d-flex align-items-center justify-content-between">
+                <span style="font-size:12px;font-weight:800;color:#fff;letter-spacing:.6px"><i class="fas fa-puzzle-piece me-2 text-warning"></i>الموديولات الإضافية (<?= $modTotal ?>)</span>
+                <button type="button" class="btn btn-sm" id="modMatrixToggle" onclick="toggleModMatrix()" style="background:rgba(255,255,255,.14);color:#fff;font-size:11px;border:none">
+                  <i class="fas fa-chevron-down me-1"></i><span>إخفاء التفاصيل</span>
+                </button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:10px 20px;font-size:12px;font-weight:700;color:#475569;background:#f8fafc">المضمّن من الموديولات</td>
+            <?php foreach ($pkgs as $p): $_mc = 0; foreach ($modAll as $_mk => $_) if (($allFeatures[$p['id']]['mod_'.$_mk] ?? '0') === '1') $_mc++; ?>
+            <td style="text-align:center;padding:10px 16px;background:#f8fafc"><span style="background:#ede9fe;color:#5b21b6;border-radius:8px;padding:3px 10px;font-size:13px;font-weight:800"><?= $_mc ?>/<?= $modTotal ?></span></td>
+            <?php endforeach; ?>
+          </tr>
+          <?php foreach ($modGroups as $catName => $catRows): ?>
+          <tr class="mod-matrix-row">
+            <td colspan="<?= count($pkgs)+1 ?>" style="background:#f1f5f9;padding:6px 20px;font-size:11px;font-weight:800;color:#64748b;border:none"><?= e($catName) ?></td>
+          </tr>
+          <?php foreach ($catRows as $m): ?>
+          <tr class="mod-matrix-row" style="border-bottom:1px solid #f0f4f8">
+            <td style="padding:9px 20px">
+              <div class="d-flex align-items-center gap-2">
+                <div style="width:28px;height:28px;border-radius:8px;background:#f5f3ff;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-<?= e($m['icon'] ?: 'puzzle-piece') ?>" style="font-size:11px;color:#7c3aed"></i></div>
+                <div>
+                  <div style="font-size:12.5px;font-weight:600;color:#1e293b"><?= e($m['name']) ?></div>
+                  <div style="font-size:10.5px;color:#94a3b8;max-width:360px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="<?= e($m['description']) ?>"><?= e($m['description']) ?></div>
+                </div>
+              </div>
+            </td>
+            <?php foreach ($pkgs as $p): $on = (($allFeatures[$p['id']]['mod_'.$m['module_key']] ?? '0') === '1'); ?>
+            <td style="text-align:center;padding:9px 16px;vertical-align:middle">
+              <?php if ($on): ?>
+              <span style="display:inline-flex;align-items:center;gap:4px;background:#dcfce7;color:#16a34a;border-radius:50px;padding:3px 11px;font-size:11.5px;font-weight:700"><i class="fas fa-check" style="font-size:9px"></i> مفعّل</span>
+              <?php else: ?>
+              <span style="display:inline-flex;align-items:center;gap:4px;background:#f1f5f9;color:#94a3b8;border-radius:50px;padding:3px 11px;font-size:11.5px"><i class="fas fa-minus" style="font-size:9px"></i> غير متاح</span>
+              <?php endif; ?>
+            </td>
+            <?php endforeach; ?>
+          </tr>
+          <?php endforeach; endforeach; ?>
+          <?php endif; ?>
         </tbody>
       </table>
     </div>
   </div>
 </div>
+<script>
+function toggleModMatrix() {
+  var rows = document.querySelectorAll('.mod-matrix-row');
+  var hide = rows.length && rows[0].style.display !== 'none';
+  rows.forEach(function (r) { r.style.display = hide ? 'none' : ''; });
+  var b = document.getElementById('modMatrixToggle');
+  b.querySelector('span').textContent = hide ? 'عرض التفاصيل' : 'إخفاء التفاصيل';
+  b.querySelector('i').className = 'fas fa-chevron-' + (hide ? 'left' : 'down') + ' me-1';
+}
+</script>
 
 <!-- ══ بطاقات الباقات ══ -->
 <div class="row g-3 mb-4">
@@ -264,10 +333,9 @@ $cardColors = [
 foreach ($pkgs as $idx => $p):
     [$c1,$c2,$bg] = $cardColors[$idx % 3];
     $feats = $allFeatures[$p['id']] ?? [];
-    $enabledCount = count(array_filter(array_intersect_key($feats, array_flip(
-        ['has_finance','has_contracts','has_poa','has_library','has_correspondence','has_archive','has_ai','has_invoices','has_reports','has_api','has_precedents','has_digital_services']
-    )), fn($v)=>$v==='1'));
-    $totalBool = 12;
+    $enabledCount = count(array_filter(array_intersect_key($feats, $coreFeats), fn($v)=>$v==='1'));
+    $totalBool = count($coreFeats);
+    $modEnabled = 0; foreach ($modAll as $_mk => $_) if (($feats['mod_'.$_mk] ?? '0') === '1') $modEnabled++;
 ?>
 <div class="col-lg-4 col-md-6">
   <div class="card h-100" id="card_<?= $p['id'] ?>"
@@ -332,16 +400,10 @@ foreach ($pkgs as $idx => $p):
       <!-- أيقونات المزايا -->
       <div class="d-flex flex-wrap gap-1 mt-2">
         <?php
-        $iconMap = [
-            'has_finance'=>'wallet','has_invoices'=>'file-invoice','has_contracts'=>'file-signature',
-            'has_poa'=>'stamp','has_correspondence'=>'envelope','has_library'=>'book-open',
-            'has_archive'=>'archive','has_ai'=>'robot','has_reports'=>'chart-bar','has_api'=>'code',
-            'has_precedents'=>'scale-balanced','has_digital_services'=>'hand-holding-dollar',
-        ];
-        foreach ($iconMap as $fkey => $ficon):
+        foreach ($coreFeats as $fkey => [$_fl, $ficon, $_fh]):
             $on = ($feats[$fkey] ?? '0') === '1';
         ?>
-        <span title="<?= e($featureGroups['الوحدات الوظيفية'][$fkey][0] ?? $fkey) ?>"
+        <span title="<?= e($_fl) ?>"
               style="width:24px;height:24px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;
               background:<?= $on ? "linear-gradient(135deg,{$c1},{$c2})" : '#f1f5f9' ?>;color:<?= $on ? '#fff' : '#cbd5e1' ?>;
               transition:all .2s">
@@ -349,6 +411,15 @@ foreach ($pkgs as $idx => $p):
         </span>
         <?php endforeach; ?>
       </div>
+      <?php if ($modTotal): ?>
+      <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+        <span style="font-size:12px;color:#64748b;font-weight:600"><i class="fas fa-puzzle-piece me-1" style="color:#7c3aed"></i>الموديولات الإضافية المضمّنة</span>
+        <span style="font-size:13px;font-weight:800;color:#7c3aed"><?= $modEnabled ?>/<?= $modTotal ?></span>
+      </div>
+      <div style="height:6px;background:#e2e8f0;border-radius:50px;overflow:hidden">
+        <div style="height:100%;width:<?= round($modEnabled/$modTotal*100) ?>%;background:linear-gradient(90deg,#7c3aed,#a78bfa);border-radius:50px;transition:width .5s"></div>
+      </div>
+      <?php endif; ?>
     </div>
 
     <div style="padding:14px 20px;font-size:12px;color:#64748b">
@@ -441,7 +512,7 @@ foreach ($pkgs as $idx => $p):
                            onfocus="this.style.borderColor='<?= $fc1 ?>'" onblur="this.style.borderColor='#e2e8f0'">
                     <span style="font-size:12px;color:#94a3b8;white-space:nowrap">
                       <?= $key === 'storage_mb' ? 'MB' : ($key === 'max_users' ? 'مستخدم' : ($key === 'max_cases' ? 'قضية' : 'عميل')) ?>
-                      <br><small style="font-size:10px">(0 = ∞)</small>
+                      <br><small style="font-size:10px;color:#16a34a;font-weight:700">0 = ∞ غير محدود</small>
                     </span>
                   </div>
                 </div>
@@ -453,43 +524,47 @@ foreach ($pkgs as $idx => $p):
             <!-- تبديلات بوليانية -->
             <div class="row g-2 mb-4">
               <?php foreach ($features as $key => [$label, $icon, $type, $hint]):
-                $isOn = ($pFeats[$key] ?? '0') === '1';
-              ?>
-              <div class="col-md-6">
-                <label class="feat-toggle <?= $isOn ? 'feat-on' : '' ?>" data-key="<?= $key ?>"
-                       style="display:flex;align-items:center;gap:12px;padding:14px 16px;
-                              border:2px solid <?= $isOn ? $fc1 : '#e2e8f0' ?>;border-radius:12px;
-                              cursor:pointer;background:<?= $isOn ? "linear-gradient(135deg,{$fc1}08,{$fc2}12)" : '#fff' ?>;
-                              transition:all .2s;user-select:none">
-                  <input type="checkbox" name="<?= $key ?>" id="feat_<?= $key ?>"
-                         <?= $isOn ? 'checked' : '' ?> style="display:none">
-                  <!-- أيقونة الميزة -->
-                  <div class="feat-icon" style="width:38px;height:38px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:15px;
-                       background:<?= $isOn ? "linear-gradient(135deg,{$fc1},{$fc2})" : '#f1f5f9' ?>;
-                       color:<?= $isOn ? '#fff' : '#94a3b8' ?>;transition:all .2s">
-                    <i class="fas fa-<?= $icon ?>"></i>
-                  </div>
-                  <!-- النص -->
-                  <div style="flex:1;min-width:0">
-                    <div class="feat-label" style="font-size:13px;font-weight:700;color:<?= $isOn ? '#0c1b36' : '#64748b' ?>;transition:color .2s"><?= $label ?></div>
-                    <div style="font-size:11px;color:#94a3b8;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?= $hint ?></div>
-                  </div>
-                  <!-- مفتاح التبديل -->
-                  <div class="toggle-sw" style="width:44px;height:24px;border-radius:50px;flex-shrink:0;
-                       background:<?= $isOn ? "linear-gradient(135deg,{$fc1},{$fc2})" : '#e2e8f0' ?>;
-                       position:relative;transition:background .25s">
-                    <div class="toggle-knob" style="width:18px;height:18px;background:#fff;border-radius:50%;
-                         position:absolute;top:3px;transition:left .25s;box-shadow:0 1px 4px rgba(0,0,0,.2);
-                         left:<?= $isOn ? '23px' : '3px' ?>"></div>
-                  </div>
-                </label>
-              </div>
-              <?php endforeach; ?>
+                echo pk_toggle_tile($key, $label, $icon, $hint, ($pFeats[$key] ?? '0') === '1', $fc1, $fc2);
+              endforeach; ?>
             </div>
             <?php endif; ?>
-
-          <?php endforeach; ?>
           </div>
+          <?php endforeach; ?>
+
+          <?php if ($modGroups): ?>
+          <!-- ══ الموديولات الإضافية: تفعيل/إيقاف أي موديول مسجّل (الحالي والمستقبلي) لهذه الباقة ══ -->
+          <div style="padding:20px 28px 8px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+              <div style="flex:1;height:1px;background:#e2e8f0"></div>
+              <span style="font-size:11px;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap;padding:0 8px"><i class="fas fa-puzzle-piece me-1"></i>الموديولات الإضافية</span>
+              <div style="flex:1;height:1px;background:#e2e8f0"></div>
+            </div>
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+              <input type="search" id="modSearch" placeholder="ابحث في الموديولات…" class="form-control form-control-sm" style="max-width:240px;border-radius:8px">
+              <span class="ms-auto" style="font-size:12px;color:#64748b">مفعّل: <b id="modOnCount" style="color:#7c3aed">0</b> / <?= $modTotal ?></span>
+              <button type="button" class="btn btn-sm btn-outline-success" onclick="bulkMods(true)"><i class="fas fa-check-double me-1"></i>تفعيل الكل</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="bulkMods(false)"><i class="fas fa-ban me-1"></i>إيقاف الكل</button>
+            </div>
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:12px"><i class="fas fa-circle-info me-1"></i>الموديول المُفعَّل هنا يصبح متاحاً تلقائياً لكل المكاتب المشتركة في هذه الباقة، ويظهر في جدول الأسعار العام.</div>
+            <?php foreach ($modGroups as $catName => $catRows): ?>
+            <div class="mod-cat" style="margin-bottom:6px">
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <span style="font-size:12px;font-weight:800;color:#475569"><?= e($catName) ?> <span style="color:#94a3b8;font-weight:600">(<?= count($catRows) ?>)</span></span>
+                <span style="font-size:11px">
+                  <a href="#" class="text-success text-decoration-none" onclick="bulkMods(true,this.closest('.mod-cat'));return false">تفعيل القسم</a>
+                  <span class="text-muted mx-1">·</span>
+                  <a href="#" class="text-secondary text-decoration-none" onclick="bulkMods(false,this.closest('.mod-cat'));return false">إيقاف القسم</a>
+                </span>
+              </div>
+              <div class="row g-2 mb-3">
+                <?php foreach ($catRows as $m):
+                  echo pk_toggle_tile('mod_' . $m['module_key'], $m['name'], $m['icon'], $m['description'] ?? '', ($pFeats['mod_' . $m['module_key']] ?? '0') === '1', $fc1, $fc2, true);
+                endforeach; ?>
+              </div>
+            </div>
+            <?php endforeach; ?>
+          </div>
+          <?php endif; ?>
         </div><!-- /modal-body -->
 
         <!-- فوتر المودال -->
@@ -535,8 +610,37 @@ document.querySelectorAll('.feat-toggle').forEach(function(label) {
     ico.style.background      = on ? 'linear-gradient(135deg,'+c1+','+c2+')' : '#f1f5f9';
     ico.style.color           = on ? '#fff' : '#94a3b8';
     lbl.style.color           = on ? '#0c1b36' : '#64748b';
+    updateModCount();
   });
 });
+
+function updateModCount() {
+  var el = document.getElementById('modOnCount');
+  if (el) el.textContent = document.querySelectorAll('.mod-toggle input[type=checkbox]:checked').length;
+}
+// تفعيل/إيقاف مجموعة موديولات (الكل أو قسم واحد) — يُحاكي نقرة المستخدم ليتحدّث الشكل تلقائياً
+function bulkMods(on, scope) {
+  (scope || document).querySelectorAll('.mod-toggle').forEach(function (label) {
+    if (label.closest('.pk-tile-col').style.display === 'none') return; // يحترم نتيجة البحث
+    var cb = label.querySelector('input[type=checkbox]');
+    if (cb.checked !== on) label.click();
+  });
+  updateModCount();
+}
+var _ms = document.getElementById('modSearch');
+if (_ms) _ms.addEventListener('input', function () {
+  var q = this.value.trim().toLowerCase();
+  document.querySelectorAll('.mod-cat').forEach(function (cat) {
+    var any = false;
+    cat.querySelectorAll('.pk-tile-col').forEach(function (col) {
+      var hit = !q || (col.dataset.search || '').indexOf(q) !== -1;
+      col.style.display = hit ? '' : 'none';
+      if (hit) any = true;
+    });
+    cat.style.display = any ? '' : 'none';
+  });
+});
+updateModCount();
 </script>
 <?php endif; ?>
 

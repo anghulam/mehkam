@@ -4,9 +4,10 @@ require_once '../includes/content_helper.php';
 $_site_name_p=sc($conn,'site_name','OLFS');
 $page_title=$_site_name_p.' — نظام إدارة مكاتب المحاماة الأذكى';
 $page_desc=sc($conn,'site_name','OLFS').' — منصة رائدة لإدارة مكاتب المحاماة في المملكة العربية السعودية';
-$pkgs=[];
-$res=$conn->query("SELECT * FROM packages WHERE is_active=1 ORDER BY price_yearly ASC");
-if($res) while($p=$res->fetch_assoc()) $pkgs[]=$p;
+require_once '../includes/module_helper.php';
+require_once 'includes/pricing_ui.php';
+$cat=pkg_public_catalog($conn);   // الباقات + الميزات + الموديولات المضمّنة (يعكس تخصيص الأدمن)
+$pkgs=$cat['packages'];
 $oc=(int)($conn->query("SELECT COUNT(*) c FROM offices WHERE status='active'")->fetch_assoc()['c']??47);
 $cc=(int)($conn->query("SELECT COUNT(*) c FROM cases")->fetch_assoc()['c']??1800);
 include 'includes/header.php';
@@ -176,67 +177,35 @@ include 'includes/header.php';
       <p class="lx-p mx-auto">جرّب 14 يوماً مجاناً. لا حاجة لبطاقة ائتمان.</p>
     </div>
 
-    <?php if (!empty($pkgs)): ?>
-    <!-- Packages Grid -->
-    <div class="row g-4 justify-content-center">
-      <?php
-      $btn_classes = ['lx-pbtn-out', 'lx-pbtn-gold', 'lx-pbtn-navy'];
-      $pkg_bgs     = ['#334155', 'linear-gradient(135deg,#b8860b,#e8c040)', '#0f2040'];
-      $pkg_icons   = ['seedling', 'star', 'building'];
-      $pkg_icclr   = ['#fff', '#080c14', '#fff'];
-
-      foreach ($pkgs as $i => $p):
-        $featured = ($i == 1);
-        $features = array_filter(array_map('trim', explode(',', $p['features'] ?? '')));
-        $yr       = (int) $p['price_yearly'];
-        $btn_cls  = $btn_classes[$i] ?? 'lx-pbtn-out';
-        $pkg_bg   = $pkg_bgs[$i]    ?? '#334155';
-        $pkg_icon = $pkg_icons[$i]  ?? 'box';
-        $pkg_iclr = $pkg_icclr[$i]  ?? '#fff';
-      ?>
-      <div class="col-md-6 col-lg-4 reveal">
-        <div class="lx-pcard <?= $featured ? 'feat' : '' ?> h-100">
-          <div class="lx-phead">
-            <div class="lx-pbadge">
-              <?= $featured ? '⭐ الأكثر شيوعاً' : e($p['name']) ?>
-            </div>
-            <div class="lx-picon-row">
-              <div class="lx-picon" style="background:<?= $pkg_bg ?>">
-                <i class="fas fa-<?= $pkg_icon ?>" style="color:<?= $pkg_iclr ?>"></i>
-              </div>
-              <div class="lx-pname"><?= e($p['name']) ?></div>
-            </div>
-            <div class="lx-pprice">
-              <span class="lx-pamount"><?= number_format($yr) ?></span>
-              <span class="lx-pcur">ر.س</span>
-              <span class="lx-pper">/ سنة</span>
-            </div>
-          </div>
-          <div class="lx-psep"></div>
-          <div class="lx-pbody">
-            <ul class="lx-pfeats list-unstyled" style="margin-bottom:15px">
-              <li>
-                <div class="lx-pcheck">✓</div>
-                <?= ((int)$p['max_users']==0||(int)$p['max_users']>=999) ? 'مستخدمون <strong>غير محدودين</strong>' : 'حتى <strong>'.(int)$p['max_users'].'</strong> مستخدمين' ?>
-              </li>
-              <li>
-                <div class="lx-pcheck">✓</div>
-                <?= ((int)$p['max_cases']==0||(int)$p['max_cases']>=999) ? 'قضايا <strong>غير محدودة</strong>' : 'حتى <strong>'.(int)$p['max_cases'].'</strong> قضية' ?>
-              </li>
-              <?php foreach ($features as $f): ?>
-              <li><div class="lx-pcheck">✓</div><?= e($f) ?></li>
-              <?php endforeach; ?>
-            </ul>
-            <a href="register.php?pkg=<?= $p['id'] ?>" class="lx-pbtn <?= $btn_cls ?>">ابدأ الآن</a>
-          </div>
-        </div>
-      </div>
-      <?php endforeach; ?>
-    </div>
+    <?php if (!empty($cat['packages'])): ?>
+    <?php pricing_ui_styles(); pricing_ui_cards($cat, ['compare_href' => '#home-compare', 'max_feats' => 5]); ?>
 
     <div class="text-center mt-4 reveal">
-      <a href="pricing.php" class="lx-btn-out d-inline-flex"><i class="fas fa-list-ul"></i>مقارنة تفصيلية للباقات</a>
+      <button type="button" class="lx-btn-out d-inline-flex" id="home-compare-toggle" aria-expanded="false">
+        <i class="fas fa-table-list"></i><span>مقارنة تفصيلية للباقات والموديولات</span>
+      </button>
+      <a href="pricing.php" class="lx-btn-out d-inline-flex" style="margin-right:10px"><i class="fas fa-arrow-left"></i>صفحة الأسعار الكاملة</a>
     </div>
+
+    <div id="home-compare" style="scroll-margin-top:90px;margin-top:36px">
+      <?php pricing_ui_compare($cat, ['id' => 'hc', 'collapsed' => true]); ?>
+    </div>
+    <script>
+    (function () {
+      var btn = document.getElementById('home-compare-toggle'), box = document.getElementById('hc-box');
+      if (!btn || !box) return;
+      btn.addEventListener('click', function () {
+        var open = box.classList.toggle('open');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.querySelector('span').textContent = open ? 'إخفاء المقارنة التفصيلية' : 'مقارنة تفصيلية للباقات والموديولات';
+        if (open) box.scrollIntoView({behavior: 'smooth', block: 'start'});
+      });
+      // الروابط «عرض التفاصيل» داخل البطاقات تفتح الجدول
+      document.querySelectorAll('a[href="#home-compare"]').forEach(function (a) {
+        a.addEventListener('click', function () { if (!box.classList.contains('open')) btn.click(); });
+      });
+    })();
+    </script>
     <?php endif; ?>
   </div>
 </section>

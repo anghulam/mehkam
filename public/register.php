@@ -39,6 +39,7 @@ try {
 
 // الموديولات الإضافية تظهر تلقائياً كخيارات في الباقة المخصصة
 require_once '../includes/module_helper.php';
+pkg_sync_limits($conn); // يصحّح packages.max_users للباقات المحفوظة بقيمة 1 بدل 0 (غير محدود)
 $feat_keys_builder = ['has_finance','has_invoices','has_contracts','has_poa','has_correspondence','has_library','has_archive','has_ai','has_reports','has_api','has_precedents','has_digital_services'];
 custom_pkg_inject_modules($conn, $fp, $feat_keys_builder);
 foreach ($fp as $_k => $_v) if (!empty($_v['is_module'])) $feat_label_map[$_k] = $_v['feature_label'];
@@ -308,7 +309,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $page_title = 'تسجيل مكتب جديد | '.sc($conn,'site_name','Mehkam');
-$packages_q = $conn->query("SELECT * FROM packages WHERE is_active=1 ORDER BY price_yearly ASC");
+$packages_q = $conn->query("SELECT * FROM packages WHERE is_active=1 AND name NOT LIKE 'مخصصة —%' ORDER BY price_yearly ASC");
 $all_pkgs   = [];
 if ($packages_q) while($p=$packages_q->fetch_assoc()) $all_pkgs[] = $p;
 

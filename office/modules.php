@@ -132,6 +132,15 @@ $om_map = [];
 $omr = $conn->query("SELECT om.module_key, (om.is_enabled=1 AND (om.package_id IS NULL OR om.package_id=o.package_id)) AS is_enabled, om.price, om.package_id
     FROM office_modules om JOIN offices o ON o.id=om.office_id WHERE om.office_id=$oid");
 while ($r = $omr->fetch_assoc()) $om_map[$r['module_key']] = $r;
+// موديولات مضمّنة في باقة المكتب (mod_<key> = 1): مفعّلة تلقائياً ولا تُشترى ولا يُلغى اشتراكها من هنا
+$pkgq = $conn->query("SELECT SUBSTRING(pf.feature_key,5) module_key FROM offices o
+    JOIN package_features pf ON pf.package_id=o.package_id
+    WHERE o.id=$oid AND pf.feature_key LIKE 'mod\\_%' AND pf.feature_value='1'");
+if ($pkgq) while ($r = $pkgq->fetch_assoc()) {
+    if (empty($om_map[$r['module_key']]['is_enabled'])) {
+        $om_map[$r['module_key']] = ['module_key'=>$r['module_key'], 'is_enabled'=>1, 'price'=>null, 'package_id'=>null, 'via_pkg'=>1];
+    }
+}
 
 $req_map = [];
 $reqr = $conn->query("SELECT module_key, amount, gateway FROM module_requests WHERE office_id=$oid AND status='pending'");
@@ -204,13 +213,15 @@ include '../includes/office_header.php';
     <?php endif; ?>
     <div class="mt-auto">
       <?php if ($enabled): ?>
-        <span class="badge bg-success bg-opacity-10 text-success w-100 py-2"><i class="fas fa-check-circle me-1"></i>مفعَّل لمكتبك<?= !empty($st['package_id']) ? ' — ضمن باقتك المخصصة' : '' ?></span>
+        <span class="badge bg-success bg-opacity-10 text-success w-100 py-2"><i class="fas fa-check-circle me-1"></i>مفعَّل لمكتبك<?= !empty($st['via_pkg']) ? ' — مضمّن في باقتك' : (!empty($st['package_id']) ? ' — ضمن باقتك المخصصة' : '') ?></span>
         <a href="<?= e(!empty($m['is_feature']) ? ($_featPages[$m['module_key']] ?? 'dashboard.php') : $m['module_key'].'.php') ?>" class="btn btn-outline-primary btn-sm w-100 mt-2"><i class="fas fa-arrow-left me-1"></i>فتح</a>
+        <?php if (empty($st['via_pkg'])): ?>
         <form method="POST" class="mt-2" onsubmit="return confirm('إلغاء الاشتراك في «<?= e(addslashes($m['name'])) ?>»؟ ستفقد أنت وموظفوك الوصول لهذا الموديول فوراً.')">
           <input type="hidden" name="form_type" value="cancel_module">
           <input type="hidden" name="module_key" value="<?= e($m['module_key']) ?>">
           <button type="submit" class="btn btn-outline-danger btn-sm w-100"><i class="fas fa-ban me-1"></i>إلغاء الاشتراك</button>
         </form>
+        <?php endif; ?>
       <?php elseif ($pendingReq): ?>
         <span class="badge bg-warning bg-opacity-10 text-warning w-100 py-2 d-block">
           <i class="fas fa-clock me-1"></i>طلبك قيد مراجعة الأدمن
