@@ -86,7 +86,7 @@ if (in_array('cases', $sections, true)) {
 $sessions_total = 0; $sessions_by_status = []; $sessions_rows = [];
 if (in_array('sessions', $sections, true)) {
     $sw = "s.office_id=$oid AND DATE(s.session_date) BETWEEN '$fromE' AND '$toE'" . caseScope('c');
-    if ($_rpQ !== '') $sw .= " AND (c.case_number LIKE '%$_rpQE%' OR c.title LIKE '%$_rpQE%' OR s.description LIKE '%$_rpQE%')";
+    if ($_rpQ !== '') $sw .= " AND (c.case_number LIKE '%$_rpQE%' OR c.title LIKE '%$_rpQE%' OR s.description LIKE '%$_rpQE%' OR s.result LIKE '%$_rpQE%' OR s.notes LIKE '%$_rpQE%')";
     $sessions_total = (int)dbVal($conn, "SELECT COUNT(*) FROM sessions s JOIN cases c ON s.case_id=c.id WHERE $sw");
     $r = $conn->query("SELECT s.status, COUNT(*) c FROM sessions s JOIN cases c ON s.case_id=c.id WHERE $sw GROUP BY s.status");
     if ($r) while ($x = $r->fetch_assoc()) $sessions_by_status[$x['status']] = (int)$x['c'];
@@ -196,15 +196,27 @@ function rp_section_open($title, $count, $navy) {
 
 <?php if (in_array('sessions', $sections, true)): rp_section_open('الجلسات', $sessions_total, $navy); ?>
 <table width="100%" cellpadding="6" cellspacing="0" style="border:0.4pt solid #dde3ec">
-  <tr><td style="<?= $HC ?>">القضية</td><td style="<?= $HC ?>">موعد الجلسة</td><td style="<?= $HC ?>">الحالة</td></tr>
-  <?php if ($sessions_rows): foreach ($sessions_rows as $s): ?>
+  <tr>
+    <td width="22%" style="<?= $HC ?>">القضية</td><td width="15%" style="<?= $HC ?>">موعد الجلسة</td><td width="9%" style="<?= $HC ?>">الحالة</td>
+    <td width="40%" style="<?= $HC ?>">ما حدث في الجلسة / القرار</td><td width="14%" style="<?= $HC ?>">الجلسة القادمة</td>
+  </tr>
+  <?php if ($sessions_rows): foreach ($sessions_rows as $s):
+    $sRes = trim((string)($s['result'] ?? '')); $sNot = trim((string)($s['notes'] ?? '')); $sDesc = trim((string)($s['description'] ?? ''));
+  ?>
   <tr>
     <td style="<?= $IC ?>"><b><?= e($s['case_number']) ?></b> — <?= e(mb_substr($s['case_title'],0,30)) ?></td>
     <td style="<?= $IC ?>"><?= e($dt($s['session_date'])) ?></td>
     <td style="<?= $IC ?>"><?= e($S_SESS[$s['status']] ?? $s['status']) ?></td>
+    <td style="<?= $IC ?>">
+      <?php if ($sDesc !== ''): ?><span style="color:#6b7280;font-size:8pt">الموضوع: </span><?= nl2br(e($sDesc)) ?><br><?php endif; ?>
+      <?php if ($sRes !== ''): ?><b><?= nl2br(e($sRes)) ?></b><?php endif; ?>
+      <?php if ($sNot !== ''): ?><br><span style="color:#6b7280;font-size:8pt">ملاحظات: </span><?= nl2br(e($sNot)) ?><?php endif; ?>
+      <?php if ($sRes === '' && $sNot === ''): ?><span style="color:#9aa4b2">لم يُسجَّل ما حدث في الجلسة</span><?php endif; ?>
+    </td>
+    <td style="<?= $IC ?>"><?= !empty($s['next_session_date']) ? e($dt($s['next_session_date'])) : '—' ?></td>
   </tr>
   <?php endforeach; else: ?>
-  <tr><td colspan="3" style="<?= $IC ?>;text-align:center;color:#9aa4b2">لا توجد جلسات في هذه الفترة</td></tr>
+  <tr><td colspan="5" style="<?= $IC ?>;text-align:center;color:#9aa4b2">لا توجد جلسات في هذه الفترة</td></tr>
   <?php endif; ?>
 </table>
 <?= $SEP ?><br>
