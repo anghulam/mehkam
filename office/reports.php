@@ -86,14 +86,15 @@ if ($_canCases) {
 $sessions_total = 0; $sessions_by_status = []; $sessions_list = null;
 if ($_canSessions) {
     $sw = "s.office_id=$oid AND DATE(s.session_date) BETWEEN '$fromE' AND '$toE'" . caseScope('c');
-    if ($tab === 'sessions' && $_rpQ !== '') $sw .= " AND (c.case_number LIKE '%$_rpQE%' OR c.title LIKE '%$_rpQE%' OR s.description LIKE '%$_rpQE%' OR s.result LIKE '%$_rpQE%' OR s.notes LIKE '%$_rpQE%')";
+    if ($tab === 'sessions' && $_rpQ !== '') $sw .= " AND (c.case_number LIKE '%$_rpQE%' OR c.title LIKE '%$_rpQE%' OR s.description LIKE '%$_rpQE%' OR s.result LIKE '%$_rpQE%' OR s.notes LIKE '%$_rpQE%' OR cl.full_name LIKE '%$_rpQE%')";
     if ($tab === 'sessions' && $status_f !== '') $sw .= " AND s.status='" . $conn->real_escape_string($status_f) . "'";
-    $sessions_total = (int)dbVal($conn, "SELECT COUNT(*) FROM sessions s JOIN cases c ON s.case_id=c.id WHERE $sw");
-    $r = $conn->query("SELECT s.status, COUNT(*) c FROM sessions s JOIN cases c ON s.case_id=c.id WHERE $sw GROUP BY s.status");
+    $sessions_total = (int)dbVal($conn, "SELECT COUNT(*) FROM sessions s JOIN cases c ON s.case_id=c.id LEFT JOIN clients cl ON c.client_id=cl.id WHERE $sw");
+    $r = $conn->query("SELECT s.status, COUNT(*) c FROM sessions s JOIN cases c ON s.case_id=c.id LEFT JOIN clients cl ON c.client_id=cl.id WHERE $sw GROUP BY s.status");
     if ($r) while ($x = $r->fetch_assoc()) $sessions_by_status[$x['status']] = (int)$x['c'];
     $sessions_list = $conn->query("
-        SELECT s.*, c.case_number, c.title case_title
+        SELECT s.*, c.case_number, c.title case_title, cl.full_name client_name
         FROM sessions s JOIN cases c ON s.case_id=c.id
+        LEFT JOIN clients cl ON c.client_id=cl.id
         WHERE $sw ORDER BY s.session_date DESC LIMIT 300
     ");
 }
@@ -466,11 +467,12 @@ $_pdfBtn = function (string $tabKey) use ($from, $to, $_rpQ, $_empFilter, $_isTa
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0">
-        <thead><tr><th>القضية</th><th>موعد الجلسة</th><th>الحالة</th><th>موضوع الجلسة</th><th>ما حدث في الجلسة / القرار</th><th>الجلسة القادمة</th></tr></thead>
+        <thead><tr><th>القضية</th><th>العميل</th><th>موعد الجلسة</th><th>الحالة</th><th>موضوع الجلسة</th><th>ما حدث في الجلسة / القرار</th><th>الجلسة القادمة</th></tr></thead>
         <tbody>
         <?php if ($sessions_list && $sessions_list->num_rows): while ($s = $sessions_list->fetch_assoc()): ?>
         <tr>
           <td><span class="fw-bold text-primary"><?= e($s['case_number']) ?></span> — <?= e(mb_substr($s['case_title'],0,30)) ?></td>
+          <td><?= e($s['client_name'] ?: '—') ?></td>
           <td><?= dDate($s['session_date'], true) ?></td>
           <td><span class="badge bg-info-subtle text-info"><?= $S_SESS[$s['status']] ?? $s['status'] ?></span></td>
           <td style="max-width:200px;font-size:12.5px"><?= trim((string)($s['description'] ?? '')) !== '' ? nl2br(e($s['description'])) : '<span class="text-muted">—</span>' ?></td>
@@ -482,7 +484,7 @@ $_pdfBtn = function (string $tabKey) use ($from, $to, $_rpQ, $_empFilter, $_isTa
           <td style="white-space:nowrap;font-size:12.5px"><?= !empty($s['next_session_date']) ? dDate($s['next_session_date'], true) : '<span class="text-muted">—</span>' ?></td>
         </tr>
         <?php endwhile; else: ?>
-        <tr><td colspan="6" class="text-center text-muted py-4">لا توجد جلسات في هذه الفترة</td></tr>
+        <tr><td colspan="7" class="text-center text-muted py-4">لا توجد جلسات في هذه الفترة</td></tr>
         <?php endif; ?>
         </tbody>
       </table>
