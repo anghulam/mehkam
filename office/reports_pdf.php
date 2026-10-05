@@ -86,11 +86,11 @@ if (in_array('cases', $sections, true)) {
 $sessions_total = 0; $sessions_by_status = []; $sessions_rows = [];
 if (in_array('sessions', $sections, true)) {
     $sw = "s.office_id=$oid AND DATE(s.session_date) BETWEEN '$fromE' AND '$toE'" . caseScope('c');
-    if ($_rpQ !== '') $sw .= " AND (c.case_number LIKE '%$_rpQE%' OR c.title LIKE '%$_rpQE%' OR s.description LIKE '%$_rpQE%' OR s.result LIKE '%$_rpQE%' OR s.notes LIKE '%$_rpQE%')";
-    $sessions_total = (int)dbVal($conn, "SELECT COUNT(*) FROM sessions s JOIN cases c ON s.case_id=c.id WHERE $sw");
-    $r = $conn->query("SELECT s.status, COUNT(*) c FROM sessions s JOIN cases c ON s.case_id=c.id WHERE $sw GROUP BY s.status");
+    if ($_rpQ !== '') $sw .= " AND (c.case_number LIKE '%$_rpQE%' OR c.title LIKE '%$_rpQE%' OR s.description LIKE '%$_rpQE%' OR s.result LIKE '%$_rpQE%' OR s.notes LIKE '%$_rpQE%' OR cl.full_name LIKE '%$_rpQE%')";
+    $sessions_total = (int)dbVal($conn, "SELECT COUNT(*) FROM sessions s JOIN cases c ON s.case_id=c.id LEFT JOIN clients cl ON c.client_id=cl.id WHERE $sw");
+    $r = $conn->query("SELECT s.status, COUNT(*) c FROM sessions s JOIN cases c ON s.case_id=c.id LEFT JOIN clients cl ON c.client_id=cl.id WHERE $sw GROUP BY s.status");
     if ($r) while ($x = $r->fetch_assoc()) $sessions_by_status[$x['status']] = (int)$x['c'];
-    $rs = $conn->query("SELECT s.*, c.case_number, c.title case_title FROM sessions s JOIN cases c ON s.case_id=c.id WHERE $sw ORDER BY s.session_date DESC LIMIT $ROW_CAP");
+    $rs = $conn->query("SELECT s.*, c.case_number, c.title case_title, cl.full_name client_name FROM sessions s JOIN cases c ON s.case_id=c.id LEFT JOIN clients cl ON c.client_id=cl.id WHERE $sw ORDER BY s.session_date DESC LIMIT $ROW_CAP");
     if ($rs) while ($x = $rs->fetch_assoc()) $sessions_rows[] = $x;
 }
 
@@ -197,14 +197,15 @@ function rp_section_open($title, $count, $navy) {
 <?php if (in_array('sessions', $sections, true)): rp_section_open('الجلسات', $sessions_total, $navy); ?>
 <table width="100%" cellpadding="6" cellspacing="0" style="border:0.4pt solid #dde3ec">
   <tr>
-    <td width="22%" style="<?= $HC ?>">القضية</td><td width="15%" style="<?= $HC ?>">موعد الجلسة</td><td width="9%" style="<?= $HC ?>">الحالة</td>
-    <td width="40%" style="<?= $HC ?>">ما حدث في الجلسة / القرار</td><td width="14%" style="<?= $HC ?>">الجلسة القادمة</td>
+    <td width="19%" style="<?= $HC ?>">القضية</td><td width="14%" style="<?= $HC ?>">العميل</td><td width="14%" style="<?= $HC ?>">موعد الجلسة</td><td width="8%" style="<?= $HC ?>">الحالة</td>
+    <td width="33%" style="<?= $HC ?>">ما حدث في الجلسة / القرار</td><td width="12%" style="<?= $HC ?>">الجلسة القادمة</td>
   </tr>
   <?php if ($sessions_rows): foreach ($sessions_rows as $s):
     $sRes = trim((string)($s['result'] ?? '')); $sNot = trim((string)($s['notes'] ?? '')); $sDesc = trim((string)($s['description'] ?? ''));
   ?>
   <tr>
     <td style="<?= $IC ?>"><b><?= e($s['case_number']) ?></b> — <?= e(mb_substr($s['case_title'],0,30)) ?></td>
+    <td style="<?= $IC ?>"><?= e($s['client_name'] ?: '—') ?></td>
     <td style="<?= $IC ?>"><?= e($dt($s['session_date'])) ?></td>
     <td style="<?= $IC ?>"><?= e($S_SESS[$s['status']] ?? $s['status']) ?></td>
     <td style="<?= $IC ?>">
@@ -216,7 +217,7 @@ function rp_section_open($title, $count, $navy) {
     <td style="<?= $IC ?>"><?= !empty($s['next_session_date']) ? e($dt($s['next_session_date'])) : '—' ?></td>
   </tr>
   <?php endforeach; else: ?>
-  <tr><td colspan="5" style="<?= $IC ?>;text-align:center;color:#9aa4b2">لا توجد جلسات في هذه الفترة</td></tr>
+  <tr><td colspan="6" style="<?= $IC ?>;text-align:center;color:#9aa4b2">لا توجد جلسات في هذه الفترة</td></tr>
   <?php endif; ?>
 </table>
 <?= $SEP ?><br>
