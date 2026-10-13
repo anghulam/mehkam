@@ -17,6 +17,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # تاريخ كامل لحساب رقم الإصدار (عدد الـ commits)
+
+      # يختم كل نشر برقم بناء جديد: includes/build.php → يتغيّر الإصدار الظاهر في النظام ويُعاد توليد دليل المستخدم تلقائياً.
+      - name: Stamp build version
+        run: |
+          cat > includes/build.php <<EOF
+          <?php
+          // مُولَّد تلقائياً عند النشر — لا يُعدَّل يدوياً
+          define('MEHKAM_BUILD_NUMBER', $(git rev-list --count HEAD));
+          define('MEHKAM_BUILD_SHA', '$(git rev-parse --short HEAD)');
+          define('MEHKAM_BUILD_DATE', '$(date -u +%Y-%m-%d)');
+          EOF
+          cat includes/build.php
 
       - name: Upload changed files via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5

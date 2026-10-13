@@ -390,6 +390,7 @@ body.sidebar-collapsed .mk-sb-bottom { padding: 10px 6px; }
       <?php sidebarItem('performance.php',  'chart-line',   'أداء الفريق',      $p==='performance.php', $_role!=='office_owner' || !$_can_reports); ?>
       <?php sidebarItem('activity.php',     'clock-rotate-left','سجل الإجراءات',$p==='activity.php', $_role!=='office_owner'); ?>
       <?php sidebarItem('profile.php',      'gear',         'الملف الشخصي',    $p==='profile.php'); ?>
+      <?php sidebarItem('user_manual.php',  'book-open',    'دليل المستخدم',   $p==='user_manual.php'); ?>
 
     </nav>
 

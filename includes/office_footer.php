@@ -2,6 +2,9 @@
 
     <footer class="mk-footer">
       <span>© <?= date('Y') ?> مِحكام — نظام إدارة مكاتب المحاماة</span>
+      <?php require_once __DIR__ . '/version.php'; ?>
+      &nbsp;·&nbsp;
+      <a href="user_manual.php" title="دليل المستخدم">الإصدار <?= e(mehkam_version()) ?></a>
       &nbsp;·&nbsp;
       <a href="profile.php?tab=subscription">باقتك: <?= e($_SESSION['pkg_name'] ?? '—') ?></a>
     </footer>

@@ -1,1 +1,4 @@
 config/ai_keys.php
+
+# يُولَّد تلقائياً عند النشر (رقم الإصدار) — لا يُتتبَّع
+includes/build.php
