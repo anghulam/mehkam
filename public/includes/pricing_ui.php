@@ -258,7 +258,6 @@ function pricing_ui_compare(array $cat, array $opts = []) {
             ['المستخدمون', 'users', 'عدد حسابات الموظفين', 'users', 'unl'],
             ['القضايا', 'gavel', 'الحد الأقصى للقضايا', 'cases', 'unl'],
             ['العملاء', 'address-book', 'الحد الأقصى للعملاء', 'clients', 'unl'],
-            ['مساحة التخزين', 'hard-drive', 'للمرفقات والأرشيف', 'storage', 'sto'],
         ];
         foreach ($limitRows as [$lbl, $ico, $hint, $key, $kind]) {
             $cells = []; $sigs = [];
