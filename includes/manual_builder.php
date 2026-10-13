@@ -25,40 +25,138 @@ function manual_site_name($conn): string {
     return $n !== '' ? $n : 'مِحكام';
 }
 
-/** مسار شعار المنصة المرفوع كملف محلي صالح لـ TCPDF (png/jpg/gif)، أو '' إن لم يتوفر */
-function manual_logo_file($conn): string {
+/**
+ * معلومات شعار المنصّة المرفوع من «إعدادات النظام» في الأدمن (site_logo) بصيغة صالحة للرسم داخل PDF.
+ * يدعم png/jpg/gif/webp/svg. إن تعذّر استخدام الشعار المرفوع لا نستبدله بشعار آخر (نكتفي باسم المنصة)،
+ * ولا يُستخدم الشعار الافتراضي إلا إذا لم يرفع الأدمن شعاراً أصلاً.
+ * يُرجع: source (uploaded|default|none) ، kind (raster|svg|none) ، path ، reason (سبب التعذّر إن وُجد).
+ */
+function manual_logo_info($conn): array {
     if (!function_exists('site_logo')) require_once __DIR__ . '/content_helper.php';
     $root = dirname(__DIR__);
-    $cands = [];
-    $lg = site_logo($conn);
-    if ($lg !== '') $cands[] = $root . '/' . ltrim($lg, '/');
-    $cands[] = $root . '/assets/img/logo-x.png';
-    foreach ($cands as $f) {
-        if (!is_file($f)) continue;
-        $ext = strtolower(pathinfo($f, PATHINFO_EXTENSION));
-        $hasImg = extension_loaded('gd') || extension_loaded('imagick');
-        if ($ext === 'png') {
-            // PNG بشفافية يحتاج GD/Imagick في TCPDF وإلا يتوقف توليد الملف كله — نتخطاه بأمان إن لم يتوفرا
-            $hdr = @file_get_contents($f, false, null, 0, 33);
-            $ct  = ($hdr !== false && strlen($hdr) >= 26) ? ord($hdr[25]) : 2;
-            if (($ct === 4 || $ct === 6) && !$hasImg) continue;
-            return $f;
-        }
-        if ($ext === 'jpg' || $ext === 'jpeg') return $f;
-        if ($ext === 'gif' && $hasImg) return $f;
-        // webp → png عبر GD (TCPDF لا يقرأ webp مباشرة)
-        if ($ext === 'webp' && function_exists('imagecreatefromwebp')) {
-            $dir = $root . '/uploads/manual'; if (!is_dir($dir)) @mkdir($dir, 0775, true);
-            $out = $dir . '/logo-' . md5($f . filemtime($f)) . '.png';
-            if (!is_file($out)) {
-                $im = @imagecreatefromwebp($f);
-                if ($im) { imagealphablending($im, false); imagesavealpha($im, true); @imagepng($im, $out); imagedestroy($im); }
-            }
-            if (is_file($out)) return $out;
-        }
-        // svg وغيره غير مدعوم في ملف PDF → نكمل للشعار الافتراضي
+    $lg   = site_logo($conn);
+    $info = ['source' => $lg !== '' ? 'uploaded' : 'default', 'kind' => 'none', 'path' => '', 'reason' => ''];
+    $f    = $lg !== '' ? $root . '/' . ltrim($lg, '/') : $root . '/assets/img/logo-x.png';
+    if (!is_file($f)) { $info['reason'] = 'ملف الشعار غير موجود على الخادم'; if ($lg === '') $info['source'] = 'none'; return $info; }
+
+    $ext    = strtolower(pathinfo($f, PATHINFO_EXTENSION));
+    $hasImg = extension_loaded('gd') || extension_loaded('imagick');
+    $dir    = $root . '/uploads/manual';
+    $tmpOut = function (string $suffix) use ($dir, $f) {
+        if (!is_dir($dir)) @mkdir($dir, 0775, true);
+        return $dir . '/logo-' . md5($f . filemtime($f)) . $suffix;
+    };
+
+    if ($ext === 'svg') {
+        $info['kind'] = 'svg'; $info['path'] = $f; return $info;
     }
-    return '';
+    if ($ext === 'jpg' || $ext === 'jpeg') {
+        $info['kind'] = 'raster'; $info['path'] = $f; return $info;
+    }
+    if ($ext === 'png') {
+        $hdr = @file_get_contents($f, false, null, 0, 33);
+        $ct  = ($hdr !== false && strlen($hdr) >= 26) ? ord($hdr[25]) : 2;
+        if (($ct === 4 || $ct === 6) && !$hasImg) {
+            // PNG بشفافية بلا GD/Imagick: ندمجه على خلفية بيضاء بدالة PHP خالصة بدل التخلي عنه
+            $out = $tmpOut('-flat.png');
+            if (is_file($out) || manual_png_flatten($f, $out)) { $info['kind'] = 'raster'; $info['path'] = $out; }
+            else $info['reason'] = 'صيغة PNG شفاف غير مدعومة بدون امتداد GD — ارفع الشعار بصيغة JPG أو PNG بلا شفافية';
+            return $info;
+        }
+        $info['kind'] = 'raster'; $info['path'] = $f; return $info;
+    }
+    if ($ext === 'gif' || $ext === 'webp') {
+        // يحتاجان GD: نحوّلهما إلى PNG مدمج على الأبيض
+        $out = $tmpOut('.png');
+        if (!is_file($out) && function_exists('imagecreatefromwebp') && $hasImg && extension_loaded('gd')) {
+            $im = $ext === 'webp' ? @imagecreatefromwebp($f) : @imagecreatefromgif($f);
+            if ($im) {
+                $w = imagesx($im); $h = imagesy($im);
+                $bg = imagecreatetruecolor($w, $h); imagefill($bg, 0, 0, imagecolorallocate($bg, 255, 255, 255));
+                imagecopy($bg, $im, 0, 0, 0, 0, $w, $h);
+                @imagepng($bg, $out); imagedestroy($im); imagedestroy($bg);
+            }
+        }
+        if (is_file($out)) { $info['kind'] = 'raster'; $info['path'] = $out; }
+        else $info['reason'] = 'صيغة ' . strtoupper($ext) . ' تحتاج امتداد GD في الخادم — ارفع الشعار بصيغة PNG أو JPG أو SVG';
+        return $info;
+    }
+    $info['reason'] = 'صيغة الشعار غير مدعومة';
+    return $info;
+}
+
+/** مسار ملف الشعار (للبصمة) أو '' */
+function manual_logo_file($conn): string {
+    $i = manual_logo_info($conn);
+    return $i['kind'] !== 'none' ? $i['path'] : '';
+}
+
+/**
+ * يدمج PNG شفاف (RGBA/GA بعمق 8 بت وبلا تشذير) على خلفية بيضاء ويحفظه RGB — بدون GD.
+ * يُرجع false لأي صيغة أخرى فيُكتفى باسم المنصة.
+ */
+function manual_png_flatten(string $src, string $dst): bool {
+    $d = @file_get_contents($src);
+    if ($d === false || substr($d, 0, 8) !== "\x89PNG\r\n\x1a\n") return false;
+    $pos = 8; $len = strlen($d); $ihdr = null; $idat = '';
+    while ($pos + 8 <= $len) {
+        $n = unpack('N', substr($d, $pos, 4))[1]; $type = substr($d, $pos + 4, 4);
+        $body = substr($d, $pos + 8, $n); $pos += 12 + $n;
+        if ($type === 'IHDR') $ihdr = unpack('Nw/Nh/Cdepth/Cct/Ccomp/Cfilter/Cinter', $body);
+        elseif ($type === 'IDAT') $idat .= $body;
+        elseif ($type === 'IEND') break;
+    }
+    if (!$ihdr || $ihdr['depth'] !== 8 || $ihdr['inter'] !== 0 || !in_array($ihdr['ct'], [4, 6], true)) return false;
+    if ($ihdr['w'] * $ihdr['h'] > 4000000) return false;
+    $raw = @gzuncompress($idat);
+    if ($raw === false) return false;
+    $w = $ihdr['w']; $h = $ihdr['h']; $bpp = $ihdr['ct'] === 6 ? 4 : 2; $stride = $w * $bpp;
+    if (strlen($raw) < ($stride + 1) * $h) return false;
+    $prev = array_fill(0, $stride, 0); $out = '';
+    for ($y = 0; $y < $h; $y++) {
+        $ft = ord($raw[$y * ($stride + 1)]);
+        $line = array_values(unpack('C*', substr($raw, $y * ($stride + 1) + 1, $stride)));
+        for ($i = 0; $i < $stride; $i++) {
+            $a = $i >= $bpp ? $line[$i - $bpp] : 0; $b = $prev[$i]; $c = $i >= $bpp ? $prev[$i - $bpp] : 0;
+            switch ($ft) {
+                case 1: $line[$i] = ($line[$i] + $a) & 255; break;
+                case 2: $line[$i] = ($line[$i] + $b) & 255; break;
+                case 3: $line[$i] = ($line[$i] + (($a + $b) >> 1)) & 255; break;
+                case 4:
+                    $p = $a + $b - $c; $pa = abs($p - $a); $pb = abs($p - $b); $pc = abs($p - $c);
+                    $pr = ($pa <= $pb && $pa <= $pc) ? $a : (($pb <= $pc) ? $b : $c);
+                    $line[$i] = ($line[$i] + $pr) & 255; break;
+            }
+        }
+        $prev = $line;
+        $row = "\0";
+        for ($x = 0; $x < $w; $x++) {
+            if ($bpp === 4) { $r = $line[$x * 4]; $g = $line[$x * 4 + 1]; $bl = $line[$x * 4 + 2]; $al = $line[$x * 4 + 3]; }
+            else            { $r = $g = $bl = $line[$x * 2]; $al = $line[$x * 2 + 1]; }
+            $row .= chr((int)(($r * $al + 255 * (255 - $al)) / 255)) . chr((int)(($g * $al + 255 * (255 - $al)) / 255)) . chr((int)(($bl * $al + 255 * (255 - $al)) / 255));
+        }
+        $out .= $row;
+    }
+    $chunk = function ($t, $b) { return pack('N', strlen($b)) . $t . $b . pack('N', crc32($t . $b)); };
+    $png = "\x89PNG\r\n\x1a\n" . $chunk('IHDR', pack('NNCCCCC', $w, $h, 8, 2, 0, 0, 0)) . $chunk('IDAT', gzcompress($out, 6)) . $chunk('IEND', '');
+    return @file_put_contents($dst, $png) !== false;
+}
+
+/**
+ * يرسم الشعار داخل الصندوق (x,y,w,h) محافظاً على النسبة ومتوسّطاً (raster أو svg).
+ * يُستدعى بينما RTL مُعطَّل (إحداثيات من اليسار).
+ */
+function manual_draw_logo(TCPDF $pdf, array $info, float $x, float $y, float $w, float $h): void {
+    if ($info['kind'] === 'raster') {
+        $pdf->Image($info['path'], $x, $y, $w, $h, '', '', '', false, 300, '', false, false, 0, 'CM', false, false);
+    } elseif ($info['kind'] === 'svg') {
+        $svg = (string)@file_get_contents($info['path'], false, null, 0, 20000);
+        $r = 1.0;
+        if (preg_match('/viewBox\s*=\s*"[\d.\-]+[ ,]+[\d.\-]+[ ,]+([\d.]+)[ ,]+([\d.]+)"/i', $svg, $m) && (float)$m[2] > 0) $r = (float)$m[1] / (float)$m[2];
+        elseif (preg_match('/width\s*=\s*"([\d.]+)/i', $svg, $mw) && preg_match('/height\s*=\s*"([\d.]+)/i', $svg, $mh) && (float)$mh[1] > 0) $r = (float)$mw[1] / (float)$mh[1];
+        $dw = min($w, $h * $r); $dh = $dw / max($r, 0.01);
+        $pdf->ImageSVG($info['path'], $x + ($w - $dw) / 2, $y + ($h - $dh) / 2, $dw, $dh);
+    }
 }
 
 /** يستخرج من ملف صفحة موديول: التبويبات والأزرار والأعمدة وحقول النماذج — لشرح آلي يتحدّث مع الصفحة نفسها */
@@ -171,35 +269,44 @@ function manual_generated_steps(array $m, ?array $i): array {
 /* ═════════ فئة PDF ═════════ */
 
 class ManualPDF extends TCPDF {
-    public $mLogo = ''; public $mSite = ''; public $mVersion = '';
+    public $mLogo = []; public $mSite = ''; public $mVersion = ''; public $mTocLink = 0;
 
     public function Header() {
         $w = $this->getPageWidth();
-        $this->SetFillColor(12, 27, 54);
         $r = $this->rtl; $this->rtl = false;
+        $this->SetFillColor(12, 27, 54);
         $this->Rect(0, 0, $w, 13, 'F');
         $this->SetFillColor(184, 134, 11);
         $this->Rect(0, 13, $w, 0.8, 'F');
-        if ($this->mLogo !== '' && is_file($this->mLogo)) {
-            $this->Image($this->mLogo, $w - 28, 2.6, 0, 7.8, '', '', '', false, 300, '', false, false, 0, false, false, false);
+        $hasLogo = !empty($this->mLogo) && $this->mLogo['kind'] !== 'none';
+        if ($hasLogo) { // شارة بيضاء خلف الشعار لتظهر كل الشعارات (فاتحة/داكنة) بوضوح على الشريط الكحلي
+            $this->SetFillColor(255, 255, 255);
+            $this->RoundedRect($w - 30, 2, 18, 9, 1.6, '1111', 'F');
+            manual_draw_logo($this, $this->mLogo, $w - 29, 2.6, 16, 7.8);
         }
         $this->rtl = $r;
         $this->SetTextColor(255, 255, 255);
         $this->SetFont('amiri', '', 9);
-        // في وضع RTL الإحداثي X يُقاس من الحافة اليمنى: نبدأ بعد الشعار (34mm) حتى لا يتداخلا
-        $this->SetXY($this->mLogo !== '' ? 34 : 15, 3.5);
-        $this->Cell($w - ($this->mLogo !== '' ? 34 : 15) - 15, 6, 'دليل المستخدم — ' . $this->mSite, 0, 0, 'R');
+        // في وضع RTL الإحداثي X يُقاس من الحافة اليمنى: نبدأ بعد الشعار حتى لا يتداخلا
+        $off = $hasLogo ? 34 : 14;
+        $this->SetXY($off, 3.5);
+        $this->Cell($w - $off - 14, 6, 'دليل المستخدم — ' . $this->mSite, 0, 0, 'R');
         $this->SetTextColor(0, 0, 0);
     }
 
     public function Footer() {
         $w = $this->getPageWidth(); $h = $this->getPageHeight();
         $this->SetDrawColor(221, 227, 236);
-        $this->Line(15, $h - 15, $w - 15, $h - 15);
+        $this->Line(14, $h - 15, $w - 14, $h - 15);
         $this->SetFont('amiri', '', 8.5);
         $this->SetTextColor(107, 114, 128);
-        $this->SetXY(15, $h - 13);
-        $this->Cell($w - 30, 6, 'الإصدار ' . $this->mVersion . '   •   صفحة ' . $this->getAliasNumPage() . ' من ' . $this->getAliasNbPages(), 0, 0, 'C');
+        $this->SetXY(14, $h - 13);
+        $this->Cell($w - 28, 6, 'الإصدار ' . $this->mVersion . '   •   صفحة ' . $this->getAliasNumPage() . ' من ' . $this->getAliasNbPages(), 0, 0, 'C');
+        if ($this->mTocLink) { // رابط سريع للفهرس (كتاب إلكتروني)
+            $this->SetTextColor(184, 134, 11);
+            $this->SetXY($w - 38, $h - 13);
+            $this->Cell(24, 6, 'الفهرس', 0, 0, 'L', false, $this->mTocLink);
+        }
         $this->SetTextColor(0, 0, 0);
     }
 }
@@ -235,58 +342,65 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
     $root    = dirname(__DIR__);
     $site    = manual_site_name($conn);
     $vi      = mehkam_version_info();
-    $logo    = manual_logo_file($conn);
+    $logo    = manual_logo_info($conn);
     $over    = manual_module_overrides();
     $entries = [];
 
-    $pdf = new ManualPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+    // كتاب إلكتروني: صفحة A5 (مقاس مريح للقراءة على الجوال واللوح) بهوامش وخط أكبر نسبياً
+    $pdf = new ManualPDF('P', 'mm', 'A5', true, 'UTF-8', false);
     $pdf->mLogo = $logo; $pdf->mSite = $site; $pdf->mVersion = $vi['version'];
     $pdf->SetCreator('مِحكام'); $pdf->SetAuthor($site);
     $pdf->SetTitle('دليل المستخدم — ' . $site . ' — الإصدار ' . $vi['version']);
+    $pdf->SetSubject('الكتاب الإلكتروني لدليل استخدام منصة ' . $site);
+    $pdf->SetKeywords('دليل المستخدم, ' . $site . ', مكاتب المحاماة, الإصدار ' . $vi['version']);
     $pdf->setHeaderMargin(0); $pdf->setFooterMargin(0);
-    $pdf->SetMargins(16, 24, 16, true);
-    $pdf->SetAutoPageBreak(true, 20);
+    $pdf->SetMargins(13, 22, 13, true);
+    $pdf->SetAutoPageBreak(true, 18);
     $pdf->setRTL(true);
     $pdf->setFontSubsetting(true);
+    $pdf->setDisplayMode('fullpage', 'SinglePage', 'UseOutlines'); // يفتح بلوحة الفهرس الجانبية (Bookmarks) في القارئات
     $pdf->SetFont('amiri', '', 11);
+    $tocLink = $pdf->AddLink(); $pdf->mTocLink = $tocLink;
 
-    /* ── الغلاف ── */
+    /* ── الغلاف ── (بلا فاصل صفحات تلقائي حتى لا ينزلق سطر أسفل الغلاف لصفحة جديدة) */
+    $pdf->SetAutoPageBreak(false);
     $pdf->setPrintHeader(false); $pdf->setPrintFooter(false);
     $pdf->AddPage();
     $W = $pdf->getPageWidth(); $H = $pdf->getPageHeight();
+    $navyH = round($H * 0.6);
     $pdf->setRTL(false, false);
-    $pdf->SetFillColor(12, 27, 54);  $pdf->Rect(0, 0, $W, 170, 'F');
-    $pdf->SetFillColor(184, 134, 11); $pdf->Rect(0, 170, $W, 2.2, 'F');
+    $pdf->SetFillColor(12, 27, 54);   $pdf->Rect(0, 0, $W, $navyH, 'F');
+    $pdf->SetFillColor(184, 134, 11); $pdf->Rect(0, $navyH, $W, 2, 'F');
     $pdf->SetFillColor(255, 255, 255);
-    $pdf->RoundedRect(($W - 70) / 2, 28, 70, 46, 5, '1111', 'F');
-    if ($logo !== '') {
-        $pdf->Image($logo, ($W - 58) / 2, 33, 58, 36, '', '', '', true, 300, '', false, false, 0, 'CM', false, false);
-    }
+    $pdf->RoundedRect(($W - 60) / 2, 22, 60, 40, 4.5, '1111', 'F');
+    manual_draw_logo($pdf, $logo, ($W - 50) / 2, 26, 50, 32);
     $pdf->setRTL(true, false);
     $pdf->SetTextColor(255, 255, 255);
-    $pdf->SetFont('amiri', 'B', 36);
-    $pdf->SetXY(16, 88); $pdf->Cell($W - 32, 16, 'دليل المستخدم', 0, 1, 'C');
-    $pdf->SetFont('amiri', '', 15);
-    $pdf->SetXY(16, 108); $pdf->Cell($W - 32, 9, 'منصة ' . $site . ' لإدارة مكاتب المحاماة', 0, 1, 'C');
-    $pdf->SetFont('amiri', '', 11);
+    $pdf->SetFont('amiri', 'B', 30);
+    $pdf->SetXY(12, 74); $pdf->Cell($W - 24, 14, 'دليل المستخدم', 0, 1, 'C');
+    $pdf->SetFont('amiri', '', 13);
+    $pdf->SetXY(12, 91); $pdf->Cell($W - 24, 8, 'منصة ' . $site . ' لإدارة مكاتب المحاماة', 0, 1, 'C');
+    $pdf->SetFont('amiri', '', 10.5);
     $pdf->SetTextColor(232, 192, 64);
-    $pdf->SetXY(16, 124); $pdf->Cell($W - 32, 8, 'دليل شامل لكل الوحدات والموديولات', 0, 1, 'C');
+    $pdf->SetXY(12, 105); $pdf->Cell($W - 24, 7, 'الكتاب الإلكتروني الشامل لكل الوحدات والموديولات', 0, 1, 'C');
     $pdf->SetTextColor(12, 27, 54);
-    $pdf->SetFont('amiri', 'B', 16);
-    $pdf->SetXY(16, 195); $pdf->Cell($W - 32, 10, 'الإصدار ' . $vi['version'], 0, 1, 'C');
-    $pdf->SetFont('amiri', '', 11); $pdf->SetTextColor(100, 108, 122);
-    $pdf->SetXY(16, 207); $pdf->Cell($W - 32, 8, 'تاريخ الإصدار: ' . ($vi['date'] !== '' ? $vi['date'] : date('Y-m-d')), 0, 1, 'C');
-    if ($vi['sha'] !== '') { $pdf->SetXY(16, 215); $pdf->Cell($W - 32, 8, 'رقم البناء: ' . $vi['sha'], 0, 1, 'C'); }
-    $pdf->SetFont('amiri', '', 9.5);
-    $pdf->SetXY(16, $H - 28); $pdf->Cell($W - 32, 8, 'يتجدّد هذا الدليل تلقائياً مع كل إصدار جديد للمنصة', 0, 1, 'C');
+    $pdf->SetFont('amiri', 'B', 15);
+    $pdf->SetXY(12, $navyH + 14); $pdf->Cell($W - 24, 9, 'الإصدار ' . $vi['version'], 0, 1, 'C');
+    $pdf->SetFont('amiri', '', 10.5); $pdf->SetTextColor(100, 108, 122);
+    $pdf->SetXY(12, $navyH + 25); $pdf->Cell($W - 24, 7, 'تاريخ الإصدار: ' . ($vi['date'] !== '' ? $vi['date'] : date('Y-m-d')), 0, 1, 'C');
+    if ($vi['sha'] !== '') { $pdf->SetXY(12, $navyH + 33); $pdf->Cell($W - 24, 7, 'رقم البناء: ' . $vi['sha'], 0, 1, 'C'); }
+    $pdf->SetFont('amiri', '', 9);
+    $pdf->SetXY(12, $H - 20); $pdf->Cell($W - 24, 7, 'يتجدّد هذا الكتاب تلقائياً مع كل إصدار جديد للمنصة', 0, 1, 'C');
     $pdf->SetTextColor(0, 0, 0);
 
     /* ── الفهرس ── (الذيل يُرسم عند إغلاق الصفحة: نُبقيه مُطفأً حتى تُغلَق صفحة الغلاف) */
+    $pdf->SetAutoPageBreak(true, 18);
     $pdf->setPrintHeader(true); $pdf->setPrintFooter(false);
     $pdf->AddPage();
+    $pdf->SetLink($tocLink, 0, $pdf->getPage());
     $pdf->setPrintFooter(true);
-    $pdf->SetFont('amiri', 'B', 22); $pdf->SetTextColor(12, 27, 54);
-    $pdf->Cell(0, 14, 'الفهرس', 0, 1, 'C');
+    $pdf->SetFont('amiri', 'B', 20); $pdf->SetTextColor(12, 27, 54);
+    $pdf->Cell(0, 12, 'الفهرس', 0, 1, 'C');
     $pdf->SetTextColor(0, 0, 0); $pdf->SetFont('amiri', '', 11);
     $pdf->Ln(2);
     $pdf->writeHTML(manual_toc_html($tocEntries), true, false, true, false, '');
@@ -297,11 +411,33 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
         $entries[] = [$lvl, $title, $pdf->getPage()];
     };
     $chapterNo = 0;
-    $chapterTitle = function (string $t) use ($pdf, &$chapterNo, $note) {
+    // صفحة افتتاحية لكل فصل (كالكتب): خلفية كحلية بالرقم والعنوان، ثم يبدأ المحتوى في الصفحة التالية
+    $chapterTitle = function (string $t, string $subtitle = '') use ($pdf, &$chapterNo, $note, $W, $H, $logo) {
         $chapterNo++;
+        // ذيل الصفحة السابقة يُرسم عند إغلاقها (الآن) فنُبقيه مُشغَّلاً ونُطفئ الرأس فقط لصفحة الافتتاح
+        $pdf->setPrintHeader(false); $pdf->setPrintFooter(true);
         $pdf->AddPage();
+        $pdf->setPrintFooter(false);
         $note(0, $chapterNo . ' — ' . $t);
-        $pdf->writeHTML('<table cellpadding="6" cellspacing="0" width="100%"><tr><td width="100%" bgcolor="' . MANUAL_NAVY . '" style="color:#ffffff;font-size:19pt;font-weight:bold;border-bottom:3pt solid ' . MANUAL_GOLD . '">' . $chapterNo . ' — ' . htmlspecialchars($t, ENT_QUOTES, 'UTF-8') . '</td></tr></table><br>', true, false, true, false, '');
+        $pdf->setRTL(false, false);
+        $pdf->SetFillColor(12, 27, 54);   $pdf->Rect(0, 0, $W, $H, 'F');
+        $pdf->SetFillColor(184, 134, 11); $pdf->Rect(($W - 34) / 2, $H * 0.5 + 6, 34, 1.4, 'F');
+        $pdf->setRTL(true, false);
+        $pdf->SetTextColor(232, 192, 64);
+        $pdf->SetFont('amiri', 'B', 64);
+        $pdf->SetXY(12, $H * 0.22); $pdf->Cell($W - 24, 34, (string)$chapterNo, 0, 1, 'C');
+        $pdf->SetTextColor(255, 255, 255);
+        $pdf->SetFont('amiri', 'B', 24);
+        $pdf->SetXY(14, $H * 0.4); $pdf->MultiCell($W - 28, 12, $t, 0, 'C', false, 1);
+        if ($subtitle !== '') {
+            $pdf->SetFont('amiri', '', 11); $pdf->SetTextColor(200, 208, 222);
+            $pdf->SetXY(18, $H * 0.5 + 14); $pdf->MultiCell($W - 36, 7, $subtitle, 0, 'C', false, 1);
+        }
+        $pdf->SetTextColor(0, 0, 0);
+        // الصفحة التالية: محتوى الفصل بالرأس والذيل (ذيل صفحة الافتتاح يبقى مُطفأً لأنه يُرسم عند إغلاقها)
+        $pdf->setPrintHeader(true);
+        $pdf->AddPage();
+        $pdf->setPrintFooter(true);
         return $chapterNo;
     };
     $sub = function (string $t, int $level, string $num) use ($pdf, $note) {
@@ -325,7 +461,7 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
     foreach (manual_general_chapters() as $ch) { $chapterTitle($ch['title']); $renderBlocks($ch['blocks']); }
 
     /* ── الوحدات الأساسية ── */
-    $cn = $chapterTitle('الوحدات الأساسية');
+    $cn = $chapterTitle('الوحدات الأساسية', count(manual_core_chapters()) . ' وحدة أساسية لإدارة مكتبك');
     $emit('<p>الوحدات التالية هي أساس النظام وتتوفر حسب باقتك وصلاحياتك. لكل وحدة: الغرض منها، وموضعها في القائمة، وخطوات العمل عليها، وما تجده في صفحتها.</p>');
     $k = 0;
     foreach (manual_core_chapters() as $c) {
@@ -340,9 +476,9 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
     }
 
     /* ── الموديولات الإضافية (ديناميكية من جدول modules) ── */
-    $mn = $chapterTitle('الموديولات الإضافية');
     $groups = pkg_modules_grouped($conn);
     $total = 0; foreach ($groups as $rows) $total += count($rows);
+    $mn = $chapterTitle('الموديولات الإضافية', $total . ' موديولاً في ' . count($groups) . ' أقسام — وما يُضاف مستقبلاً');
     $emit('<p style="text-align:justify">الموديولات إضافات اختيارية تُفعَّل حسب باقتك أو تطلبها من «متجر الموديولات». يضم النظام حالياً <b>' . $total . '</b> موديولاً مصنّفة أدناه. ما يُضاف مستقبلاً من موديولات يدخل هذا الفصل تلقائياً مع الإصدار الجديد.</p>');
     $emit(manual_h_tips(['الموديول الذي لا تراه في قائمتك: إما ليس ضمن باقتك فاطلبه من «متجر الموديولات»، أو لا تملك صلاحية عرضه فاطلبها من مالك المكتب.']));
     $g = 0;
