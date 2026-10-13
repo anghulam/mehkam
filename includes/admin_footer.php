@@ -1,6 +1,8 @@
     </div><!-- /mk-content -->
     <footer class="mk-footer">
       © <?= date('Y') ?> مِحكام — لوحة إدارة النظام
+      <?php require_once __DIR__ . '/version.php'; ?>
+      &nbsp;·&nbsp; <a href="user_manual.php">الإصدار <?= e(mehkam_version()) ?></a>
     </footer>
   </div><!-- /mk-main -->
 </div><!-- /mk-wrapper -->

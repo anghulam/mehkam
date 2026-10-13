@@ -128,6 +128,7 @@ body.sidebar-collapsed .mk-sb-bottom { padding: 10px 6px; }
       <div class="mk-sb-group">الإعدادات</div>
       <?php adminSidebarItem('content.php',          'pencil',       'إدارة المحتوى',     $p==='content.php'); ?>
       <?php adminSidebarItem('settings.php',         'gear',         'إعدادات النظام',    $p==='settings.php'); ?>
+      <?php adminSidebarItem('user_manual.php',      'book-open',    'دليل المستخدم',     $p==='user_manual.php'); ?>
       <?php adminSidebarItem('payment_gateways.php', 'credit-card',  'بوابات الدفع',      $p==='payment_gateways.php'); ?>
     </nav>
 
