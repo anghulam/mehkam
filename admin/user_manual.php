@@ -28,9 +28,6 @@ include '../includes/admin_header.php';
 
 <div class="card" style="max-width:720px">
   <div class="card-body p-4 text-center">
-    <?php $lg = function_exists('site_logo') ? site_logo($conn) : ''; if ($lg): ?>
-    <img src="<?= e($lg) ?>" alt="" style="max-height:70px;max-width:220px;margin-bottom:14px">
-    <?php endif; ?>
     <h4 class="fw-bold mb-1">دليل المستخدم — كتاب إلكتروني</h4>
     <div class="text-muted mb-3">الإصدار <b class="font-monospace"><?= e($vi['version']) ?></b><?= $vi['date'] !== '' ? ' · ' . e($vi['date']) : '' ?></div>
     <p class="text-muted" style="font-size:13px">يشرح البدء السريع، والأدوار والصلاحيات، وكل الوحدات الأساسية، وجميع الموديولات الإضافية (بما فيها ما يُضاف مستقبلاً)، والباقات، وأسئلة شائعة، وسجل التحديثات.</p>
@@ -40,6 +37,9 @@ include '../includes/admin_header.php';
       <a href="user_manual.php?view=1&regen=1" target="_blank" class="btn btn-outline-secondary"><i class="fas fa-rotate me-1"></i>إعادة توليد الآن</a>
     </div>
     <div class="mt-3 text-start" style="font-size:12.5px">
+      <?php $shown = $logoInfo['source'] === 'uploaded' ? ($logoInfo['file'] ?? '') : '/assets/img/logo-x.png'; if ($shown): ?>
+      <div class="text-center mb-2"><img src="<?= e('..' . $shown) ?>" alt="" style="max-height:70px;max-width:220px;background:#f1f3f7;border-radius:8px;padding:6px"><div class="text-muted font-monospace" style="font-size:11px;margin-top:4px"><?= e($shown) ?></div></div>
+      <?php endif; ?>
       <?php if ($logoInfo['kind'] !== 'none'): ?>
       <div class="alert alert-success py-2 mb-2"><i class="fas fa-check-circle me-1"></i>يُستخدم في الكتاب <?= $logoInfo['source'] === 'uploaded' ? '<b>الشعار الذي رفعته</b> في إعدادات النظام' : 'الشعار الافتراضي (لم يُرفع شعار بعد)' ?>. <a href="settings.php">تغيير الشعار</a></div>
       <?php else: ?>

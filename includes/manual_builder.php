@@ -35,7 +35,13 @@ function manual_logo_info($conn): array {
     if (!function_exists('site_logo')) require_once __DIR__ . '/content_helper.php';
     $root = dirname(__DIR__);
     $lg   = site_logo($conn);
-    $info = ['source' => $lg !== '' ? 'uploaded' : 'default', 'kind' => 'none', 'path' => '', 'reason' => ''];
+    // لو فُقد سجل الإعداد لكن ملف الشعار المرفوع موجود (الإعدادات تحفظ آخر ملف بالاسم site-logo-*) نستخدم أحدث ملف منه
+    if ($lg === '') {
+        $cand = glob($root . '/assets/img/site-logo-*.*') ?: [];
+        usort($cand, fn($a, $b) => filemtime($b) <=> filemtime($a));
+        if ($cand) $lg = '/assets/img/' . basename($cand[0]);
+    }
+    $info = ['source' => $lg !== '' ? 'uploaded' : 'default', 'kind' => 'none', 'path' => '', 'reason' => '', 'file' => $lg];
     $f    = $lg !== '' ? $root . '/' . ltrim($lg, '/') : $root . '/assets/img/logo-x.png';
     if (!is_file($f)) { $info['reason'] = 'ملف الشعار غير موجود على الخادم'; if ($lg === '') $info['source'] = 'none'; return $info; }
 
