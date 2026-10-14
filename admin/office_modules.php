@@ -126,8 +126,12 @@ foreach ([
     $d = $conn->real_escape_string($seed[2]);
     $ic = $conn->real_escape_string($seed[3]);
     $so = (int)$seed[4];
-    $conn->query("INSERT IGNORE INTO modules (module_key,name,description,icon,base_price,sort_order) VALUES ('$k','$n','$d','$ic',0,$so)");
+    $conn->query("INSERT IGNORE INTO modules (module_key,name,description,icon,base_price,sort_order) VALUES ('$k','$n','$d','$ic',".(float)(defined('MODULE_FLAT_PRICE') ? MODULE_FLAT_PRICE : 228).",$so)");
 }
+
+// توحيد سعر كل الموديولات على 228 ر.س/سنة (مرة واحدة)
+require_once '../includes/module_helper.php';
+modules_ensure_flat_price($conn);
 
 /* ── اعتماد / رفض طلب موديول من مكتب ── */
 if (isset($_GET['approve_request'])) {
@@ -476,7 +480,7 @@ include '../includes/admin_header.php';
             </div>
             <div class="col-md-6">
               <label class="form-label fw-semibold">السعر الأساسي (ر.س/سنة)</label>
-              <input type="number" name="base_price" id="mod_price" class="form-control" min="0" step="0.01" value="0">
+              <input type="number" name="base_price" id="mod_price" class="form-control" min="0" step="0.01" value="<?= (int)MODULE_FLAT_PRICE ?>">
               <div class="form-text">مرجعي فقط الآن — يمكن تخصيصه لكل مكتب لاحقاً. صار سعراً سنوياً (كان شهرياً) — راجع القيم الحالية.</div>
             </div>
           </div>
@@ -524,7 +528,7 @@ function newModuleDef() {
   document.getElementById('mod_name').value = '';
   document.getElementById('mod_desc').value = '';
   document.getElementById('mod_icon').value = '';
-  document.getElementById('mod_price').value = '0';
+  document.getElementById('mod_price').value = '<?= (int)MODULE_FLAT_PRICE ?>';
   document.getElementById('mod_active').checked = true;
 }
 function editModuleDef(m) {
