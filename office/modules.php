@@ -74,6 +74,8 @@ function mod_effective_price($conn, $oid, $module_key, $base_price) {
     return (float)$base_price;
 }
 
+modules_ensure_flat_price($conn); // توحيد سعر كل الموديولات على 228 ر.س/سنة (مرة واحدة)
+
 /** يمنع تكرار طلب معلّق لنفس الموديول عند نفس المكتب */
 function mod_has_pending($conn, $oid, $mk) {
     return (bool)$conn->query("SELECT id FROM module_requests WHERE office_id=$oid AND module_key='$mk' AND status='pending' LIMIT 1")->num_rows;

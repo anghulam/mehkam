@@ -5,7 +5,28 @@
  * (التسجيل، صفحة الأسعار، ترقية المكتب). المفتاح داخل الباقة: mod_<module_key>.
  */
 
+/** السعر السنوي الموحَّد لكل الموديولات (ر.س) — يُطبَّق مرة واحدة على الموجود، وهو الافتراضي للجديد */
+if (!defined('MODULE_FLAT_PRICE')) define('MODULE_FLAT_PRICE', 228);
+
+/**
+ * يوحّد base_price لكل الموديولات المسجّلة على MODULE_FLAT_PRICE مرة واحدة فقط (علَم في site_content)،
+ * فلا يُكتب فوق أي تعديل يجريه الأدمن لاحقاً على سعر موديول بعينه. أسعار المكاتب المخصّصة (office_modules.price) لا تُمَسّ.
+ */
+function modules_ensure_flat_price($conn) {
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    try {
+        $flag = 'modules_flat_price_' . (int)MODULE_FLAT_PRICE;
+        $r = $conn->query("SELECT 1 FROM site_content WHERE setting_key='$flag' LIMIT 1");
+        if (!$r || $r->num_rows) return;
+        if (!$conn->query("UPDATE modules SET base_price=" . (float)MODULE_FLAT_PRICE)) return;
+        $conn->query("INSERT INTO site_content (setting_key,setting_value) VALUES ('$flag','1') ON DUPLICATE KEY UPDATE setting_value='1'");
+    } catch (\Throwable $e) {}
+}
+
 function custom_pkg_modules($conn) {
+    modules_ensure_flat_price($conn);
     $out = [];
     try {
         $r = $conn->query("SELECT module_key,name,description,icon,base_price FROM modules WHERE is_active=1 ORDER BY sort_order,id");

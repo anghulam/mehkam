@@ -47,6 +47,8 @@ include 'includes/header.php';
 <?php
 $_feat_mods = [];
 try {
+    require_once '../includes/module_helper.php';
+    modules_ensure_flat_price($conn);
     $_fmr = $conn->query("SELECT name,description,icon,base_price FROM modules WHERE is_active=1 ORDER BY sort_order,id");
     if ($_fmr) while ($_fm = $_fmr->fetch_assoc()) $_feat_mods[] = $_fm;
 } catch (\Throwable $e) {}
