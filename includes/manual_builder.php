@@ -217,7 +217,7 @@ function manual_fmt(string $t): string {
 function manual_h_step_rows(array $steps): string {
     $h = '<table cellpadding="4" cellspacing="0" width="100%">';
     foreach (array_values($steps) as $i => $st) {
-        $h .= '<tr nobr="true"><td width="7%" align="center" style="color:' . MANUAL_GOLD . ';font-weight:bold;font-size:8pt">' . ($i + 1) . '</td>'
+        $h .= '<tr nobr="true"><td width="7%" align="center" style="color:' . MANUAL_GOLD . ';font-weight:bold;font-size:10pt">' . ($i + 1) . '</td>'
             . '<td width="93%" style="border-bottom:0.4pt solid #eceff4">' . manual_fmt($st) . '</td></tr>';
     }
     return $h . '</table>';
@@ -226,17 +226,17 @@ function manual_h_step_rows(array $steps): string {
 function manual_h_tips(array $tips): string {
     $h = '';
     foreach ($tips as $t) {
-        $h .= '<table cellpadding="6" cellspacing="0" width="100%" style="margin-top:3px"><tr><td width="100%" bgcolor="#fdf8e8" style="border:0.5pt solid #ead9a4;color:#6b4e00;font-size:7.5pt"><b>نصيحة:</b> ' . manual_fmt($t) . '</td></tr></table><br>';
+        $h .= '<table cellpadding="6" cellspacing="0" width="100%" style="margin-top:3px"><tr><td width="100%" bgcolor="#fdf8e8" style="border:0.5pt solid #ead9a4;color:#6b4e00;font-size:9.5pt"><b>نصيحة:</b> ' . manual_fmt($t) . '</td></tr></table><br>';
     }
     return $h;
 }
 
 function manual_h_label(string $t): string {
-    return '<div style="color:' . MANUAL_NAVY . ';font-weight:bold;font-size:8.5pt">' . htmlspecialchars($t, ENT_QUOTES, 'UTF-8') . '</div>';
+    return '<div style="color:' . MANUAL_NAVY . ';font-weight:bold;font-size:11.5pt">' . htmlspecialchars($t, ENT_QUOTES, 'UTF-8') . '</div>';
 }
 
 function manual_h_where(string $menu): string {
-    return '<table cellpadding="5" cellspacing="0" width="100%"><tr><td bgcolor="#eef2fb" style="border-right:2.5pt solid ' . MANUAL_NAVY . ';font-size:7.5pt;color:#334155"><b>موضعها في النظام:</b> ' . htmlspecialchars(str_replace('←', ' / ', $menu), ENT_QUOTES, 'UTF-8') . '</td></tr></table>';
+    return '<table cellpadding="5" cellspacing="0" width="100%"><tr><td bgcolor="#eef2fb" style="border-right:2.5pt solid ' . MANUAL_NAVY . ';font-size:9.5pt;color:#334155"><b>موضعها في النظام:</b> ' . htmlspecialchars(str_replace('←', ' / ', $menu), ENT_QUOTES, 'UTF-8') . '</td></tr></table>';
 }
 
 /** كتلة «ما تجده في الصفحة» من الاستخراج الآلي */
@@ -252,7 +252,7 @@ function manual_h_page_elements(?array $i): string {
     if (!$rows) return '';
     $h = '<table cellpadding="4" cellspacing="0" width="100%" style="border:0.4pt solid #dde3ec">';
     foreach ($rows as [$k, $v]) {
-        $h .= '<tr nobr="true"><td width="19%" bgcolor="#f5f6f8" style="font-size:7pt;color:#5b6472"><b>' . $k . '</b></td><td width="81%" style="font-size:7.5pt">' . htmlspecialchars($v, ENT_QUOTES, 'UTF-8') . '</td></tr>';
+        $h .= '<tr nobr="true"><td width="19%" bgcolor="#f5f6f8" style="font-size:9pt;color:#5b6472"><b>' . $k . '</b></td><td width="81%" style="font-size:9.5pt">' . htmlspecialchars($v, ENT_QUOTES, 'UTF-8') . '</td></tr>';
     }
     return $h . '</table><br>';
 }
@@ -292,7 +292,7 @@ class ManualPDF extends TCPDF {
         }
         $this->rtl = $r;
         $this->SetTextColor(255, 255, 255);
-        $this->SetFont('amiri', '', 9);
+        $this->SetFont('cairop', '', 9);
         // في وضع RTL الإحداثي X يُقاس من الحافة اليمنى: نبدأ بعد الشعار حتى لا يتداخلا
         $off = $hasLogo ? 34 : 14;
         $this->SetXY($off, 3.5);
@@ -304,7 +304,7 @@ class ManualPDF extends TCPDF {
         $w = $this->getPageWidth(); $h = $this->getPageHeight();
         $this->SetDrawColor(221, 227, 236);
         $this->Line(14, $h - 15, $w - 14, $h - 15);
-        $this->SetFont('amiri', '', 8.5);
+        $this->SetFont('cairop', '', 8.5);
         $this->SetTextColor(107, 114, 128);
         $this->SetXY(14, $h - 13);
         $this->Cell($w - 28, 6, 'الإصدار ' . $this->mVersion . '   •   صفحة ' . $this->getAliasNumPage() . ' من ' . $this->getAliasNbPages(), 0, 0, 'C');
@@ -333,28 +333,22 @@ function manual_toc_html(array $entries): string {
     foreach ($entries as $e) {
         [$lvl, $title, $page] = $e;
         $pad  = $lvl * 4;
-        $style = $lvl === 0 ? 'font-weight:bold;font-size:9pt;color:' . MANUAL_NAVY : ($lvl === 1 ? 'font-size:8pt;color:#334155' : 'font-size:7pt;color:#64748b');
+        $style = $lvl === 0 ? 'font-weight:bold;font-size:11.5pt;color:' . MANUAL_NAVY : ($lvl === 1 ? 'font-size:10.5pt;color:#334155' : 'font-size:9.5pt;color:#64748b');
         $h .= '<tr><td width="' . (88 - $pad) . '%" style="' . $style . ';border-bottom:0.3pt solid #e6e9ef"><a href="#' . (int)$page . '" style="text-decoration:none;color:inherit">' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</a></td>'
            . '<td width="' . (12 + $pad) . '%" align="left" style="' . $style . ';border-bottom:0.3pt solid #e6e9ef">' . ($page ? (int)$page : '') . '</td></tr>';
     }
     return $h . '</table>';
 }
 
-/**
- * يرسم الدليل مرة واحدة: $tocEntries = بنود الفهرس بأرقام صفحاتها (أو أرقام وهمية في المرور الأول).
- * يُعيد البنود الفعلية [مستوى, عنوان, صفحة] لاستخدامها في المرور الثاني.
- */
-function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
-    $root    = dirname(__DIR__);
-    $site    = manual_site_name($conn);
-    $vi      = mehkam_version_info();
-    $logo    = manual_logo_info($conn);
-    $over    = manual_module_overrides();
-    $entries = [];
-
+/** يُنشئ كائن PDF بإعدادات الكتاب (A5، خط Cairo، تباعد 1.5، RTL) — مشترك بين الرسم الفعلي وحساب صفحات الفهرس */
+function manual_new_pdf(array $logo, string $site, array $vi): ManualPDF {
     // كتاب إلكتروني: صفحة A5 (مقاس مريح للقراءة على الجوال واللوح) بهوامش وخط أكبر نسبياً
     $pdf = new ManualPDF('P', 'mm', 'A5', true, 'UTF-8', false);
     $pdf->mLogo = $logo; $pdf->mSite = $site; $pdf->mVersion = $vi['version'];
+    // خط Cairo (ملفات التعريف داخل includes/manual_fonts — خارج vendor لأن النشر لا يرفع vendor)
+    $pdf->AddFont('cairop', '', __DIR__ . '/manual_fonts/cairop.php');
+    $pdf->AddFont('cairop', 'B', __DIR__ . '/manual_fonts/cairopb.php');
+    $pdf->setCellHeightRatio(1.5); // تباعد الأسطر 1.5
     $pdf->SetCreator('مِحكام'); $pdf->SetAuthor($site);
     $pdf->SetTitle('دليل المستخدم — ' . $site . ' — الإصدار ' . $vi['version']);
     $pdf->SetSubject('الكتاب الإلكتروني لدليل استخدام منصة ' . $site);
@@ -365,7 +359,23 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
     $pdf->setRTL(true);
     $pdf->setFontSubsetting(true);
     $pdf->setDisplayMode('fullpage', 'SinglePage', 'UseOutlines'); // يفتح بلوحة الفهرس الجانبية (Bookmarks) في القارئات
-    $pdf->SetFont('amiri', '', 8);
+    $pdf->SetFont('cairop', '', 11);
+    return $pdf;
+}
+
+/**
+ * يرسم الدليل مرة واحدة: $tocEntries = بنود الفهرس بأرقام صفحاتها (أو أرقام وهمية في المرور الأول).
+ * يُعيد البنود الفعلية [مستوى, عنوان, صفحة] لاستخدامها في المرور الثاني.
+ */
+function manual_render_pdf($conn, string $outFile, array $tocEntries, int $tocPages = 1): array {
+    $root    = dirname(__DIR__);
+    $site    = manual_site_name($conn);
+    $vi      = mehkam_version_info();
+    $logo    = manual_logo_info($conn);
+    $over    = manual_module_overrides();
+    $entries = [];
+
+    $pdf = manual_new_pdf($logo, $site, $vi);
     $tocLink = $pdf->AddLink(); $pdf->mTocLink = $tocLink;
 
     /* ── الغلاف ── (بلا فاصل صفحات تلقائي حتى لا ينزلق سطر أسفل الغلاف لصفحة جديدة) */
@@ -382,20 +392,20 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
     manual_draw_logo($pdf, $logo, ($W - 50) / 2, 26, 50, 32);
     $pdf->setRTL(true, false);
     $pdf->SetTextColor(255, 255, 255);
-    $pdf->SetFont('amiri', 'B', 30);
+    $pdf->SetFont('cairop', 'B', 30);
     $pdf->SetXY(12, 74); $pdf->Cell($W - 24, 14, 'دليل المستخدم', 0, 1, 'C');
-    $pdf->SetFont('amiri', '', 13);
+    $pdf->SetFont('cairop', '', 13);
     $pdf->SetXY(12, 91); $pdf->Cell($W - 24, 8, 'منصة ' . $site . ' لإدارة مكاتب المحاماة', 0, 1, 'C');
-    $pdf->SetFont('amiri', '', 10.5);
+    $pdf->SetFont('cairop', '', 10.5);
     $pdf->SetTextColor(232, 192, 64);
     $pdf->SetXY(12, 105); $pdf->Cell($W - 24, 7, 'الكتاب الإلكتروني الشامل لكل الوحدات والموديولات', 0, 1, 'C');
     $pdf->SetTextColor(12, 27, 54);
-    $pdf->SetFont('amiri', 'B', 15);
+    $pdf->SetFont('cairop', 'B', 15);
     $pdf->SetXY(12, $navyH + 14); $pdf->Cell($W - 24, 9, 'الإصدار ' . $vi['version'], 0, 1, 'C');
-    $pdf->SetFont('amiri', '', 10.5); $pdf->SetTextColor(100, 108, 122);
+    $pdf->SetFont('cairop', '', 10.5); $pdf->SetTextColor(100, 108, 122);
     $pdf->SetXY(12, $navyH + 25); $pdf->Cell($W - 24, 7, 'تاريخ الإصدار: ' . ($vi['date'] !== '' ? $vi['date'] : date('Y-m-d')), 0, 1, 'C');
     if ($vi['sha'] !== '') { $pdf->SetXY(12, $navyH + 33); $pdf->Cell($W - 24, 7, 'رقم البناء: ' . $vi['sha'], 0, 1, 'C'); }
-    $pdf->SetFont('amiri', '', 9);
+    $pdf->SetFont('cairop', '', 9);
     $pdf->SetXY(12, $H - 20); $pdf->Cell($W - 24, 7, 'يتجدّد هذا الكتاب تلقائياً مع كل إصدار جديد للمنصة', 0, 1, 'C');
     $pdf->SetTextColor(0, 0, 0);
 
@@ -405,11 +415,12 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
     $pdf->AddPage();
     $pdf->SetLink($tocLink, 0, $pdf->getPage());
     $pdf->setPrintFooter(true);
-    $pdf->SetFont('amiri', 'B', 20); $pdf->SetTextColor(12, 27, 54);
+    $pdf->SetFont('cairop', 'B', 20); $pdf->SetTextColor(12, 27, 54);
     $pdf->Cell(0, 12, 'الفهرس', 0, 1, 'C');
-    $pdf->SetTextColor(0, 0, 0); $pdf->SetFont('amiri', '', 8);
+    $pdf->SetTextColor(0, 0, 0); $pdf->SetFont('cairop', '', 11);
     $pdf->Ln(2);
     $pdf->writeHTML(manual_toc_html($tocEntries), true, false, true, false, '');
+    while ($pdf->getPage() < 1 + $tocPages) $pdf->AddPage(); // حجز عدد ثابت من صفحات الفهرس حتى لا يتحرّك ترقيم الصفحات بين المرورين
 
     /* ── أدوات الكتابة ── */
     $note = function (int $lvl, string $title) use ($pdf, &$entries) {
@@ -430,13 +441,13 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
         $pdf->SetFillColor(184, 134, 11); $pdf->Rect(($W - 34) / 2, $H * 0.5 + 6, 34, 1.4, 'F');
         $pdf->setRTL(true, false);
         $pdf->SetTextColor(232, 192, 64);
-        $pdf->SetFont('amiri', 'B', 64);
+        $pdf->SetFont('cairop', 'B', 64);
         $pdf->SetXY(12, $H * 0.22); $pdf->Cell($W - 24, 34, (string)$chapterNo, 0, 1, 'C');
         $pdf->SetTextColor(255, 255, 255);
-        $pdf->SetFont('amiri', 'B', 24);
+        $pdf->SetFont('cairop', 'B', 24);
         $pdf->SetXY(14, $H * 0.4); $pdf->MultiCell($W - 28, 12, $t, 0, 'C', false, 1);
         if ($subtitle !== '') {
-            $pdf->SetFont('amiri', '', 11); $pdf->SetTextColor(200, 208, 222);
+            $pdf->SetFont('cairop', '', 11); $pdf->SetTextColor(200, 208, 222);
             $pdf->SetXY(18, $H * 0.5 + 14); $pdf->MultiCell($W - 36, 7, $subtitle, 0, 'C', false, 1);
         }
         $pdf->SetTextColor(0, 0, 0);
@@ -445,12 +456,12 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
         $pdf->AddPage();
         $pdf->setPrintFooter(true);
         // إعادة الخط الافتراضي للمحتوى — وإلا يرث خط صفحة الافتتاح الضخم (غامق 24) فيظهر النص كبيراً ومشوّهاً
-        $pdf->SetFont('amiri', '', 8); $pdf->SetTextColor(0, 0, 0);
+        $pdf->SetFont('cairop', '', 11); $pdf->SetTextColor(0, 0, 0);
         return $chapterNo;
     };
     $sub = function (string $t, int $level, string $num) use ($pdf, $note) {
         $pdf->Ln(2.5);
-        $pdf->writeHTML('<div style="color:' . MANUAL_NAVY . ';font-size:' . ($level === 1 ? '10.5' : '9.5') . 'pt;font-weight:bold;border-bottom:0.8pt solid #dde3ec">' . htmlspecialchars($t, ENT_QUOTES, 'UTF-8') . '</div>', true, false, true, false, '');
+        $pdf->writeHTML('<div style="color:' . MANUAL_NAVY . ';font-size:' . ($level === 1 ? '14' : '12.5') . 'pt;font-weight:bold;border-bottom:0.8pt solid #dde3ec">' . htmlspecialchars($t, ENT_QUOTES, 'UTF-8') . '</div>', true, false, true, false, '');
         $note($level, $t);
     };
     $emit = function (string $html) use ($pdf) { $pdf->writeHTML($html, true, false, true, false, ''); };
@@ -501,14 +512,14 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
             $info = manual_introspect($root . '/office/' . $m['module_key'] . '.php');
             $o = $over[$m['module_key']] ?? null;
             $steps = $o['steps'] ?? manual_generated_steps($m, $info);
-            $html = '<table cellpadding="5" cellspacing="0" width="100%" nobr="true"><tr><td bgcolor="#f1f4fa" style="border-right:3pt solid ' . MANUAL_GOLD . ';font-size:9.5pt;font-weight:bold;color:' . MANUAL_NAVY . '">' . htmlspecialchars($m['name'], ENT_QUOTES, 'UTF-8') . '</td></tr></table>';
+            $html = '<table cellpadding="5" cellspacing="0" width="100%" nobr="true"><tr><td bgcolor="#f1f4fa" style="border-right:3pt solid ' . MANUAL_GOLD . ';font-size:12.5pt;font-weight:bold;color:' . MANUAL_NAVY . '">' . htmlspecialchars($m['name'], ENT_QUOTES, 'UTF-8') . '</td></tr></table>';
             if (!empty($m['description'])) $html .= '<p style="text-align:justify;margin:2px 0">' . htmlspecialchars($m['description'], ENT_QUOTES, 'UTF-8') . '</p>';
             $emit($html);
             $note(2, $m['name']);
             $lbl('طريقة الاستخدام'); $emit(manual_h_step_rows($steps));
             $pageEl($info);
             if (!empty($o['tips'])) $emit(manual_h_tips($o['tips']));
-            if (!$info) $emit('<p style="color:#9aa4b2;font-size:7pt">صفحة هذا الموديول قيد الإعداد وستُشرح تفاصيلها في الإصدار القادم من الدليل.</p>');
+            if (!$info) $emit('<p style="color:#9aa4b2;font-size:9pt">صفحة هذا الموديول قيد الإعداد وستُشرح تفاصيلها في الإصدار القادم من الدليل.</p>');
             $emit('<br>');
         }
     }
@@ -525,25 +536,37 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
     $chapterTitle('سجل التحديثات');
     $emit('<p>الإصدار الحالي: <b>' . $vi['version'] . '</b>' . ($vi['date'] !== '' ? ' — بتاريخ ' . $vi['date'] : '') . '. يتغيّر رقم الإصدار تلقائياً مع كل تحديث يُنشر على المنصة.</p>');
     foreach (mehkam_changelog() as $e) {
-        $emit('<table cellpadding="5" cellspacing="0" width="100%" nobr="true"><tr><td bgcolor="#eef2fb" style="border-right:2.5pt solid ' . MANUAL_NAVY . ';font-weight:bold">' . htmlspecialchars($e['title'], ENT_QUOTES, 'UTF-8') . '  <span style="color:#6b7280;font-weight:normal;font-size:7pt">' . htmlspecialchars($e['date'], ENT_QUOTES, 'UTF-8') . '</span></td></tr></table>' . manual_h_step_rows($e['items']) . '<br>');
+        $emit('<table cellpadding="5" cellspacing="0" width="100%" nobr="true"><tr><td bgcolor="#eef2fb" style="border-right:2.5pt solid ' . MANUAL_NAVY . ';font-weight:bold">' . htmlspecialchars($e['title'], ENT_QUOTES, 'UTF-8') . '  <span style="color:#6b7280;font-weight:normal;font-size:9pt">' . htmlspecialchars($e['date'], ENT_QUOTES, 'UTF-8') . '</span></td></tr></table>' . manual_h_step_rows($e['items']) . '<br>');
     }
 
     $pdf->Output($outFile, 'F');
     return $entries;
 }
 
+/** عدد الصفحات التي يشغلها الفهرس بالبنود المعطاة (يُحسب على مستند مؤقت صغير) */
+function manual_toc_pages(array $entries): int {
+    $pdf = manual_new_pdf(['kind' => 'none'], 'x', ['version' => '1']);
+    $pdf->setPrintHeader(true); $pdf->setPrintFooter(true);
+    $pdf->AddPage();
+    $pdf->SetFont('cairop', 'B', 20); $pdf->Cell(0, 12, 'الفهرس', 0, 1, 'C');
+    $pdf->SetFont('cairop', '', 11); $pdf->Ln(2);
+    $pdf->writeHTML(manual_toc_html($entries), true, false, true, false, '');
+    return max(1, $pdf->getPage());
+}
+
 /**
- * يبني الدليل بمرورين: الأول لمعرفة صفحة كل بند، والثاني يرسم الفهرس بأرقام الصفحات الصحيحة.
- * (يُعاد المرور إن تغيّر ترقيم الصفحات بين المرورين.)
+ * يبني الدليل بمرورين فقط: الأول لمعرفة صفحة كل بند، والثاني يرسم الفهرس بالأرقام الصحيحة.
+ * عدد صفحات الفهرس يُحسب مسبقاً ويُحجز، وأرقام الصفحات تُزاح بفرق ما حُجز بين المرورين.
  */
 function manual_build_pdf($conn, string $outFile): void {
-    $dummy = array_fill(0, manual_count_entries($conn), [0, 'عنوان', 0]);
-    $entries = manual_render_pdf($conn, $outFile, $dummy);
-    for ($i = 0; $i < 3; $i++) {
-        $next = manual_render_pdf($conn, $outFile, $entries);
-        if ($next === $entries) break;
-        $entries = $next;
-    }
+    $dummy   = array_fill(0, manual_count_entries($conn), [0, 'عنوان', 0]);
+    $k1      = manual_toc_pages($dummy);
+    $entries = manual_render_pdf($conn, $outFile, $dummy, $k1);
+    $k2      = manual_toc_pages($entries);
+    $shift   = $k2 - $k1;
+    foreach ($entries as &$e) $e[2] += $shift;
+    unset($e);
+    manual_render_pdf($conn, $outFile, $entries, $k2);
 }
 
 /** مسار الدليل الجاهز — يُعاد توليده تلقائياً عند تغيّر الإصدار أو أي من محتوياته */
