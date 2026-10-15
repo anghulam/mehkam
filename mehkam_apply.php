@@ -6,6 +6,7 @@
  *  سجّل دخولك كـ "أدمن" في المنصة، ثم افتح:
  *      https://mehkam.net/mehkam_apply.php
  *  بيطبّق كل التعديلات المطلوبة ويعطيك تقريراً.
+ *  (آمن للتشغيل أكثر من مرة: ما طُبّق مسبقاً يُتخطّى.)
  *  ⚠️ احذف هذا الملف من السيرفر بعد ما يخلص.
  * ─────────────────────────────────────────────────────────
  */
@@ -266,6 +267,81 @@ $steps = [
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
         "ALTER TABLE office_services ADD COLUMN type_id INT DEFAULT NULL",
     ],
+    'نظام الموديولات (التعريفات + تفعيل المكاتب + الطلبات + المشتريات)' => [
+        "CREATE TABLE IF NOT EXISTS modules (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            module_key VARCHAR(60) NOT NULL UNIQUE,
+            name VARCHAR(150) NOT NULL,
+            description VARCHAR(255) DEFAULT NULL,
+            icon VARCHAR(50) DEFAULT 'puzzle-piece',
+            base_price DECIMAL(10,2) DEFAULT 0,
+            is_active TINYINT DEFAULT 1,
+            sort_order INT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "CREATE TABLE IF NOT EXISTS office_modules (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            office_id INT NOT NULL,
+            module_key VARCHAR(60) NOT NULL,
+            is_enabled TINYINT DEFAULT 1,
+            price DECIMAL(10,2) DEFAULT NULL,
+            enabled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            enabled_by INT DEFAULT NULL,
+            package_id INT DEFAULT NULL,
+            UNIQUE KEY uk_office_mod (office_id, module_key),
+            INDEX idx_office (office_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "ALTER TABLE office_modules ADD COLUMN package_id INT DEFAULT NULL",
+        "CREATE TABLE IF NOT EXISTS module_purchases (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            office_id INT NOT NULL,
+            module_key VARCHAR(60) NOT NULL,
+            amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+            gateway VARCHAR(20) DEFAULT 'free',
+            txn_ref VARCHAR(100) DEFAULT NULL,
+            purchased_by INT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_office (office_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "CREATE TABLE IF NOT EXISTS module_requests (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            office_id INT NOT NULL,
+            module_key VARCHAR(60) NOT NULL,
+            status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+            requested_by INT DEFAULT NULL,
+            requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TIMESTAMP NULL DEFAULT NULL,
+            resolved_by INT DEFAULT NULL,
+            notes TEXT,
+            amount DECIMAL(10,2) DEFAULT 0,
+            gateway VARCHAR(20) DEFAULT 'free',
+            txn_ref VARCHAR(100) DEFAULT NULL,
+            INDEX idx_office (office_id), INDEX idx_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "CREATE TABLE IF NOT EXISTS deleted_module_keys (
+            module_key VARCHAR(60) PRIMARY KEY,
+            deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+    ],
+    'توحيد سعر كل الموديولات على 228 ر.س سنوياً (مرة واحدة)' => [
+        // لا يُنفَّذ إلا إن لم يُسجَّل العلَم — فلا يُكتب فوق تعديل لاحق يجريه الأدمن على سعر موديول
+        "UPDATE modules SET base_price=228 WHERE NOT EXISTS (SELECT 1 FROM site_content WHERE setting_key='modules_flat_price_228')",
+        "INSERT IGNORE INTO site_content (setting_key,setting_value) VALUES ('modules_flat_price_228','1')",
+    ],
+    'مزامنة حدّ المستخدمين/القضايا في الباقات (0 = غير محدود)' => [
+        "UPDATE packages p JOIN package_features pf ON pf.package_id=p.id AND pf.feature_key='max_users'
+            SET p.max_users = CAST(pf.feature_value AS UNSIGNED)
+            WHERE pf.feature_value REGEXP '^[0-9]+\$' AND p.max_users <> CAST(pf.feature_value AS UNSIGNED)",
+        "UPDATE packages p JOIN package_features pf ON pf.package_id=p.id AND pf.feature_key='max_cases'
+            SET p.max_cases = CAST(pf.feature_value AS UNSIGNED)
+            WHERE pf.feature_value REGEXP '^[0-9]+\$' AND p.max_cases <> CAST(pf.feature_value AS UNSIGNED)",
+    ],
+    'التسعير سنوي فقط — دورة الفوترة الافتراضية للمكاتب' => [
+        "ALTER TABLE offices MODIFY COLUMN billing_cycle ENUM('monthly','yearly') NOT NULL DEFAULT 'yearly'",
+    ],
+    'الذكاء الاصطناعي: Gemini فقط — حذف مفتاح/نموذج المزود القديم (Anthropic) من الإعدادات' => [
+        "DELETE FROM site_content WHERE setting_key IN ('ai_api_key','ai_model')",
+    ],
 ];
 
 $done = 0; $skipped = 0; $failed = 0;
@@ -296,4 +372,17 @@ if ($failed === 0) {
 } else {
     echo '<p class="err">فيه أخطاء أعلاه — انسخها وأرسلها للمطوّر.</p>';
 }
+// تنبيهات ما بعد الترقية
+$notes = [];
+if (is_file(__DIR__ . '/config/ai_keys.php')) {
+    $k = @include __DIR__ . '/config/ai_keys.php';
+    if (is_array($k) && (!empty($k['groq']) || !empty($k['openrouter']))) {
+        $notes[] = 'ملف <code>config/ai_keys.php</code> ما زال يحوي مفاتيح قديمة (groq / openrouter) — لم يعد النظام يستخدمها. احذفها من الملف (أو احذف الملف) وضع مفتاح Gemini من <a href="admin/settings.php" style="color:#c9a227">إعدادات المنصة ← الذكاء الاصطناعي</a>.';
+    }
+}
+if ((string)($conn->query("SELECT setting_value FROM site_content WHERE setting_key='gemini_api_key' LIMIT 1")->fetch_assoc()['setting_value'] ?? '') === '') {
+    $notes[] = 'مفتاح <strong>Gemini</strong> غير مُدخَل في الإعدادات بعد — أدخله من إعدادات المنصة ← الذكاء الاصطناعي ليعمل المساعد الذكي وبقية ميزات AI.';
+}
+@mkdir(__DIR__ . '/uploads/manual', 0775, true); // مجلد تخزين دليل المستخدم PDF
+foreach ($notes as $nt) echo '<p class="err">⚠ ' . $nt . '</p>';
 echo '<p><a href="admin/settings.php" style="color:#c9a227">← إعدادات المنصة</a></p></div></body></html>';

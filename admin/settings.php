@@ -7,6 +7,15 @@ require_once '../includes/mailer.php';
 requireAdmin();
 $page_title = 'إعدادات المنصة';
 
+/* ── اختبار اتصال Gemini (AJAX) — يستخدم المفتاح المحفوظ ── */
+if (isset($_POST['test_gemini'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    require_once '../includes/gemini.php';
+    $r = gemini_generate($conn, '', [['role' => 'user', 'content' => 'أجب بكلمة واحدة فقط: جاهز']], ['max_tokens' => 64, 'timeout' => 25]);
+    echo json_encode(['ok' => $r['ok'], 'model' => $r['model'], 'error' => $r['error']], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 /* ── فحص بيانات OAuth لـ Google Drive (AJAX) ── */
 if (isset($_GET['gdrive_check'])) {
     header('Content-Type: application/json; charset=utf-8');
@@ -100,13 +109,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'wathiq_base_url','wathiq_api_key',
         'zatca_env','zatca_base_url',
         'etimad_base_url','etimad_api_key',
-        'ai_api_key','ai_model',
+        'gemini_api_key','gemini_model',
     ];
     // حقول بالتبديل (checkbox)
     $toggle_fields = ['two_factor_enabled','email_verify_enabled',
         'nafath_enabled','wathiq_enabled','zatca_enabled','etimad_enabled'];
 
     foreach ($all_fields as $key) {
+        if ($key === 'gemini_api_key' && trim($_POST[$key] ?? '') === '') continue; // الحقل السري الفارغ = إبقاء المفتاح المحفوظ
         if (isset($_POST[$key])) {
             $val = $conn->real_escape_string(trim($_POST[$key]));
             $conn->query("INSERT INTO site_content (setting_key,setting_value) VALUES ('$key','$val') ON DUPLICATE KEY UPDATE setting_value='$val'");
@@ -584,6 +594,57 @@ $ch = fn($k) => $s($k,'0')==='1'; // checkbox
     </div>
   </div>
 
+  <!-- ══ الذكاء الاصطناعي — Gemini (مزوّد المنصة الوحيد: المساعد الذكي، المساعد القانوني، صياغة العقود، إنشاء القضية من صحيفة الدعوى) ══ -->
+  <div class="col-12">
+    <?php
+      require_once '../includes/gemini.php';
+      $gm_key   = gemini_key($conn);
+      $gm_saved = $s('gemini_api_key') !== '';
+      $gm_src   = $gm_saved ? 'الإعدادات' : ($gm_key !== '' ? 'ملف config/ai_keys.php أو متغير البيئة' : '');
+    ?>
+    <div class="card">
+      <div class="card-header fw-bold" style="background:linear-gradient(135deg,#1a3a6e,#4285f4);color:#fff;border:none">
+        <i class="fas fa-robot me-2"></i>الذكاء الاصطناعي — Google Gemini
+        <?php if ($gm_key !== ''): ?>
+        <span class="badge bg-success ms-2" style="font-size:11px"><i class="fas fa-check me-1"></i>مفعّل<?= $gm_src ? ' — من ' . e($gm_src) : '' ?></span>
+        <?php else: ?>
+        <span class="badge bg-warning text-dark ms-2" style="font-size:11px">غير مفعّل — أدخل المفتاح</span>
+        <?php endif; ?>
+      </div>
+      <div class="card-body">
+        <div class="row g-3 align-items-end">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">مفتاح Gemini API (سري)</label>
+            <input type="password" name="gemini_api_key" class="form-control font-monospace" autocomplete="new-password"
+                   placeholder="<?= $gm_saved ? '•••••• (محفوظ — اتركه فارغاً للإبقاء)' : 'AIza...' ?>">
+            <div class="form-text">احصل عليه من <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a> — يُستخدم لكل ميزات الذكاء الاصطناعي في المنصة.</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">نموذج Gemini</label>
+            <input type="text" name="gemini_model" class="form-control font-monospace" value="<?= e($s('gemini_model')) ?>" placeholder="<?= e(GEMINI_DEFAULT_MODEL) ?>">
+            <div class="form-text">اتركه فارغاً لاستخدام النموذج الافتراضي.</div>
+          </div>
+          <div class="col-md-2">
+            <button type="button" class="btn btn-outline-primary w-100" id="gmTestBtn"><i class="fas fa-plug me-1"></i>اختبار</button>
+          </div>
+        </div>
+        <div id="gmTestMsg" class="mt-2" style="font-size:13px"></div>
+        <div class="form-text mt-2"><i class="fas fa-circle-info me-1"></i>أدخل المفتاح ثم اضغط «حفظ جميع الإعدادات» أولاً، بعدها «اختبار» للتأكد أنه يعمل. الميزة تعمل لكل المكاتب فور حفظ المفتاح.</div>
+      </div>
+    </div>
+  </div>
+  <script>
+  document.getElementById('gmTestBtn').addEventListener('click', function () {
+    var b = this, m = document.getElementById('gmTestMsg');
+    b.disabled = true; m.innerHTML = '<span class="text-muted">جاري الاختبار…</span>';
+    var fd = new FormData(); fd.append('test_gemini', '1');
+    fetch('settings.php', {method: 'POST', body: fd}).then(function (r) { return r.json(); }).then(function (j) {
+      m.innerHTML = j.ok ? '<span class="text-success"><i class="fas fa-check-circle me-1"></i>الاتصال ناجح — النموذج: <b>' + j.model + '</b></span>'
+                         : '<span class="text-danger"><i class="fas fa-times-circle me-1"></i>' + j.error + '</span>';
+    }).catch(function () { m.innerHTML = '<span class="text-danger">تعذّر تنفيذ الاختبار</span>'; }).finally(function () { b.disabled = false; });
+  });
+  </script>
+
   <!-- ══ ZATCA ══ -->
   <div class="col-12">
     <div class="card">
@@ -709,15 +770,6 @@ $ch = fn($k) => $s($k,'0')==='1'; // checkbox
           </div>
         </div>
 
-        <!-- الذكاء الاصطناعي (موديول إنشاء القضية من صحيفة الدعوى) -->
-        <div class="border rounded p-3 mt-3">
-          <div class="fw-bold mb-2"><i class="fas fa-robot me-1 text-primary"></i>الذكاء الاصطناعي — استخراج بيانات القضايا</div>
-          <div class="row g-2">
-            <?php $govField('ai_api_key', 'مفتاح Anthropic API (سري)', '', 'password'); ?>
-            <?php $govField('ai_model', 'النموذج', 'claude-sonnet-5'); ?>
-          </div>
-          <div class="form-text" style="font-size:11px"><i class="fas fa-circle-info me-1"></i>اتركه فارغاً لتعمل الميزة بالمحلل المحلي فقط. يُحدّ استخدام كل مكتب بـ ٢٠ استدعاء يومياً لحماية التكلفة.</div>
-        </div>
 
       </div>
     </div>
