@@ -276,6 +276,7 @@ function manual_generated_steps(array $m, ?array $i): array {
 
 class ManualPDF extends TCPDF {
     public $mLogo = []; public $mSite = ''; public $mVersion = ''; public $mTocLink = 0;
+    public $mTotal = 0; // إجمالي الصفحات إن كان معلوماً (المرور الثاني): يُكتب نصاً ثابتاً فيُحاذى النص لليمين بدقة (الـalias أعرض من الرقم الفعلي فيُزيح النص)
 
     public function Header() {
         $w = $this->getPageWidth();
@@ -307,7 +308,9 @@ class ManualPDF extends TCPDF {
         $this->SetFont('cairop', '', 8.5);
         $this->SetTextColor(107, 114, 128);
         $this->SetXY(14, $h - 13);
-        $this->Cell($w - 28, 6, 'الإصدار ' . $this->mVersion . '   •   صفحة ' . $this->getAliasNumPage() . ' من ' . $this->getAliasNbPages(), 0, 0, 'C');
+        $pg  = $this->mTotal ? (string)$this->PageNo() : $this->getAliasNumPage();
+        $tot = $this->mTotal ? (string)$this->mTotal : $this->getAliasNbPages();
+        $this->Cell($w - 28, 6, 'الإصدار ' . $this->mVersion . '   •   صفحة ' . $pg . ' من ' . $tot, 0, 0, 'R');
         if ($this->mTocLink) { // رابط سريع للفهرس (كتاب إلكتروني)
             $this->SetTextColor(184, 134, 11);
             $this->SetXY($w - 38, $h - 13);
@@ -367,7 +370,7 @@ function manual_new_pdf(array $logo, string $site, array $vi): ManualPDF {
  * يرسم الدليل مرة واحدة: $tocEntries = بنود الفهرس بأرقام صفحاتها (أو أرقام وهمية في المرور الأول).
  * يُعيد البنود الفعلية [مستوى, عنوان, صفحة] لاستخدامها في المرور الثاني.
  */
-function manual_render_pdf($conn, string $outFile, array $tocEntries, int $tocPages = 1): array {
+function manual_render_pdf($conn, string $outFile, array $tocEntries, int $tocPages = 1, int $totalPages = 0, ?int &$pagesOut = null): array {
     $root    = dirname(__DIR__);
     $site    = manual_site_name($conn);
     $vi      = mehkam_version_info();
@@ -376,7 +379,7 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries, int $tocPa
     $entries = [];
 
     $pdf = manual_new_pdf($logo, $site, $vi);
-    $tocLink = $pdf->AddLink(); $pdf->mTocLink = $tocLink;
+    $tocLink = $pdf->AddLink(); $pdf->mTocLink = $tocLink; $pdf->mTotal = $totalPages;
 
     /* ── الغلاف ── (بلا فاصل صفحات تلقائي حتى لا ينزلق سطر أسفل الغلاف لصفحة جديدة) */
     $pdf->SetAutoPageBreak(false);
@@ -539,6 +542,7 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries, int $tocPa
         $emit('<table cellpadding="5" cellspacing="0" width="100%" nobr="true"><tr><td bgcolor="#eef2fb" style="border-right:2.5pt solid ' . MANUAL_NAVY . ';font-weight:bold">' . htmlspecialchars($e['title'], ENT_QUOTES, 'UTF-8') . '  <span style="color:#6b7280;font-weight:normal;font-size:9pt">' . htmlspecialchars($e['date'], ENT_QUOTES, 'UTF-8') . '</span></td></tr></table>' . manual_h_step_rows($e['items']) . '<br>');
     }
 
+    $pagesOut = $pdf->getNumPages();
     $pdf->Output($outFile, 'F');
     return $entries;
 }
@@ -561,12 +565,13 @@ function manual_toc_pages(array $entries): int {
 function manual_build_pdf($conn, string $outFile): void {
     $dummy   = array_fill(0, manual_count_entries($conn), [0, 'عنوان', 0]);
     $k1      = manual_toc_pages($dummy);
-    $entries = manual_render_pdf($conn, $outFile, $dummy, $k1);
+    $pages1  = 0;
+    $entries = manual_render_pdf($conn, $outFile, $dummy, $k1, 0, $pages1);
     $k2      = manual_toc_pages($entries);
     $shift   = $k2 - $k1;
     foreach ($entries as &$e) $e[2] += $shift;
     unset($e);
-    manual_render_pdf($conn, $outFile, $entries, $k2);
+    manual_render_pdf($conn, $outFile, $entries, $k2, $pages1 + $shift); // الإجمالي معروف الآن
 }
 
 /** مسار الدليل الجاهز — يُعاد توليده تلقائياً عند تغيّر الإصدار أو أي من محتوياته */
