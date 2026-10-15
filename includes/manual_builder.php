@@ -217,7 +217,7 @@ function manual_fmt(string $t): string {
 function manual_h_step_rows(array $steps): string {
     $h = '<table cellpadding="4" cellspacing="0" width="100%">';
     foreach (array_values($steps) as $i => $st) {
-        $h .= '<tr nobr="true"><td width="7%" align="center" style="color:' . MANUAL_GOLD . ';font-weight:bold;font-size:9.5pt">' . ($i + 1) . '</td>'
+        $h .= '<tr nobr="true"><td width="7%" align="center" style="color:' . MANUAL_GOLD . ';font-weight:bold;font-size:8pt">' . ($i + 1) . '</td>'
             . '<td width="93%" style="border-bottom:0.4pt solid #eceff4">' . manual_fmt($st) . '</td></tr>';
     }
     return $h . '</table>';
@@ -226,17 +226,17 @@ function manual_h_step_rows(array $steps): string {
 function manual_h_tips(array $tips): string {
     $h = '';
     foreach ($tips as $t) {
-        $h .= '<table cellpadding="6" cellspacing="0" width="100%" style="margin-top:3px"><tr><td width="100%" bgcolor="#fdf8e8" style="border:0.5pt solid #ead9a4;color:#6b4e00;font-size:8.5pt"><b>نصيحة:</b> ' . manual_fmt($t) . '</td></tr></table><br>';
+        $h .= '<table cellpadding="6" cellspacing="0" width="100%" style="margin-top:3px"><tr><td width="100%" bgcolor="#fdf8e8" style="border:0.5pt solid #ead9a4;color:#6b4e00;font-size:7.5pt"><b>نصيحة:</b> ' . manual_fmt($t) . '</td></tr></table><br>';
     }
     return $h;
 }
 
 function manual_h_label(string $t): string {
-    return '<div style="color:' . MANUAL_NAVY . ';font-weight:bold;font-size:9.5pt">' . htmlspecialchars($t, ENT_QUOTES, 'UTF-8') . '</div>';
+    return '<div style="color:' . MANUAL_NAVY . ';font-weight:bold;font-size:8.5pt">' . htmlspecialchars($t, ENT_QUOTES, 'UTF-8') . '</div>';
 }
 
 function manual_h_where(string $menu): string {
-    return '<table cellpadding="5" cellspacing="0" width="100%"><tr><td bgcolor="#eef2fb" style="border-right:2.5pt solid ' . MANUAL_NAVY . ';font-size:8.5pt;color:#334155"><b>موضعها في النظام:</b> ' . htmlspecialchars(str_replace('←', ' / ', $menu), ENT_QUOTES, 'UTF-8') . '</td></tr></table>';
+    return '<table cellpadding="5" cellspacing="0" width="100%"><tr><td bgcolor="#eef2fb" style="border-right:2.5pt solid ' . MANUAL_NAVY . ';font-size:7.5pt;color:#334155"><b>موضعها في النظام:</b> ' . htmlspecialchars(str_replace('←', ' / ', $menu), ENT_QUOTES, 'UTF-8') . '</td></tr></table>';
 }
 
 /** كتلة «ما تجده في الصفحة» من الاستخراج الآلي */
@@ -252,7 +252,7 @@ function manual_h_page_elements(?array $i): string {
     if (!$rows) return '';
     $h = '<table cellpadding="4" cellspacing="0" width="100%" style="border:0.4pt solid #dde3ec">';
     foreach ($rows as [$k, $v]) {
-        $h .= '<tr nobr="true"><td width="19%" bgcolor="#f5f6f8" style="font-size:8pt;color:#5b6472"><b>' . $k . '</b></td><td width="81%" style="font-size:8.5pt">' . htmlspecialchars($v, ENT_QUOTES, 'UTF-8') . '</td></tr>';
+        $h .= '<tr nobr="true"><td width="19%" bgcolor="#f5f6f8" style="font-size:7pt;color:#5b6472"><b>' . $k . '</b></td><td width="81%" style="font-size:7.5pt">' . htmlspecialchars($v, ENT_QUOTES, 'UTF-8') . '</td></tr>';
     }
     return $h . '</table><br>';
 }
@@ -333,7 +333,7 @@ function manual_toc_html(array $entries): string {
     foreach ($entries as $e) {
         [$lvl, $title, $page] = $e;
         $pad  = $lvl * 4;
-        $style = $lvl === 0 ? 'font-weight:bold;font-size:10.5pt;color:' . MANUAL_NAVY : ($lvl === 1 ? 'font-size:9pt;color:#334155' : 'font-size:8pt;color:#64748b');
+        $style = $lvl === 0 ? 'font-weight:bold;font-size:9pt;color:' . MANUAL_NAVY : ($lvl === 1 ? 'font-size:8pt;color:#334155' : 'font-size:7pt;color:#64748b');
         $h .= '<tr><td width="' . (88 - $pad) . '%" style="' . $style . ';border-bottom:0.3pt solid #e6e9ef"><a href="#' . (int)$page . '" style="text-decoration:none;color:inherit">' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</a></td>'
            . '<td width="' . (12 + $pad) . '%" align="left" style="' . $style . ';border-bottom:0.3pt solid #e6e9ef">' . ($page ? (int)$page : '') . '</td></tr>';
     }
@@ -365,7 +365,7 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
     $pdf->setRTL(true);
     $pdf->setFontSubsetting(true);
     $pdf->setDisplayMode('fullpage', 'SinglePage', 'UseOutlines'); // يفتح بلوحة الفهرس الجانبية (Bookmarks) في القارئات
-    $pdf->SetFont('amiri', '', 9.5);
+    $pdf->SetFont('amiri', '', 8);
     $tocLink = $pdf->AddLink(); $pdf->mTocLink = $tocLink;
 
     /* ── الغلاف ── (بلا فاصل صفحات تلقائي حتى لا ينزلق سطر أسفل الغلاف لصفحة جديدة) */
@@ -407,7 +407,7 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
     $pdf->setPrintFooter(true);
     $pdf->SetFont('amiri', 'B', 20); $pdf->SetTextColor(12, 27, 54);
     $pdf->Cell(0, 12, 'الفهرس', 0, 1, 'C');
-    $pdf->SetTextColor(0, 0, 0); $pdf->SetFont('amiri', '', 9.5);
+    $pdf->SetTextColor(0, 0, 0); $pdf->SetFont('amiri', '', 8);
     $pdf->Ln(2);
     $pdf->writeHTML(manual_toc_html($tocEntries), true, false, true, false, '');
 
@@ -445,12 +445,12 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
         $pdf->AddPage();
         $pdf->setPrintFooter(true);
         // إعادة الخط الافتراضي للمحتوى — وإلا يرث خط صفحة الافتتاح الضخم (غامق 24) فيظهر النص كبيراً ومشوّهاً
-        $pdf->SetFont('amiri', '', 9.5); $pdf->SetTextColor(0, 0, 0);
+        $pdf->SetFont('amiri', '', 8); $pdf->SetTextColor(0, 0, 0);
         return $chapterNo;
     };
     $sub = function (string $t, int $level, string $num) use ($pdf, $note) {
         $pdf->Ln(2.5);
-        $pdf->writeHTML('<div style="color:' . MANUAL_NAVY . ';font-size:' . ($level === 1 ? '12' : '11') . 'pt;font-weight:bold;border-bottom:0.8pt solid #dde3ec">' . htmlspecialchars($t, ENT_QUOTES, 'UTF-8') . '</div>', true, false, true, false, '');
+        $pdf->writeHTML('<div style="color:' . MANUAL_NAVY . ';font-size:' . ($level === 1 ? '10.5' : '9.5') . 'pt;font-weight:bold;border-bottom:0.8pt solid #dde3ec">' . htmlspecialchars($t, ENT_QUOTES, 'UTF-8') . '</div>', true, false, true, false, '');
         $note($level, $t);
     };
     $emit = function (string $html) use ($pdf) { $pdf->writeHTML($html, true, false, true, false, ''); };
@@ -501,14 +501,14 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
             $info = manual_introspect($root . '/office/' . $m['module_key'] . '.php');
             $o = $over[$m['module_key']] ?? null;
             $steps = $o['steps'] ?? manual_generated_steps($m, $info);
-            $html = '<table cellpadding="5" cellspacing="0" width="100%" nobr="true"><tr><td bgcolor="#f1f4fa" style="border-right:3pt solid ' . MANUAL_GOLD . ';font-size:11pt;font-weight:bold;color:' . MANUAL_NAVY . '">' . htmlspecialchars($m['name'], ENT_QUOTES, 'UTF-8') . '</td></tr></table>';
+            $html = '<table cellpadding="5" cellspacing="0" width="100%" nobr="true"><tr><td bgcolor="#f1f4fa" style="border-right:3pt solid ' . MANUAL_GOLD . ';font-size:9.5pt;font-weight:bold;color:' . MANUAL_NAVY . '">' . htmlspecialchars($m['name'], ENT_QUOTES, 'UTF-8') . '</td></tr></table>';
             if (!empty($m['description'])) $html .= '<p style="text-align:justify;margin:2px 0">' . htmlspecialchars($m['description'], ENT_QUOTES, 'UTF-8') . '</p>';
             $emit($html);
             $note(2, $m['name']);
             $lbl('طريقة الاستخدام'); $emit(manual_h_step_rows($steps));
             $pageEl($info);
             if (!empty($o['tips'])) $emit(manual_h_tips($o['tips']));
-            if (!$info) $emit('<p style="color:#9aa4b2;font-size:8pt">صفحة هذا الموديول قيد الإعداد وستُشرح تفاصيلها في الإصدار القادم من الدليل.</p>');
+            if (!$info) $emit('<p style="color:#9aa4b2;font-size:7pt">صفحة هذا الموديول قيد الإعداد وستُشرح تفاصيلها في الإصدار القادم من الدليل.</p>');
             $emit('<br>');
         }
     }
@@ -525,7 +525,7 @@ function manual_render_pdf($conn, string $outFile, array $tocEntries): array {
     $chapterTitle('سجل التحديثات');
     $emit('<p>الإصدار الحالي: <b>' . $vi['version'] . '</b>' . ($vi['date'] !== '' ? ' — بتاريخ ' . $vi['date'] : '') . '. يتغيّر رقم الإصدار تلقائياً مع كل تحديث يُنشر على المنصة.</p>');
     foreach (mehkam_changelog() as $e) {
-        $emit('<table cellpadding="5" cellspacing="0" width="100%" nobr="true"><tr><td bgcolor="#eef2fb" style="border-right:2.5pt solid ' . MANUAL_NAVY . ';font-weight:bold">' . htmlspecialchars($e['title'], ENT_QUOTES, 'UTF-8') . '  <span style="color:#6b7280;font-weight:normal;font-size:8pt">' . htmlspecialchars($e['date'], ENT_QUOTES, 'UTF-8') . '</span></td></tr></table>' . manual_h_step_rows($e['items']) . '<br>');
+        $emit('<table cellpadding="5" cellspacing="0" width="100%" nobr="true"><tr><td bgcolor="#eef2fb" style="border-right:2.5pt solid ' . MANUAL_NAVY . ';font-weight:bold">' . htmlspecialchars($e['title'], ENT_QUOTES, 'UTF-8') . '  <span style="color:#6b7280;font-weight:normal;font-size:7pt">' . htmlspecialchars($e['date'], ENT_QUOTES, 'UTF-8') . '</span></td></tr></table>' . manual_h_step_rows($e['items']) . '<br>');
     }
 
     $pdf->Output($outFile, 'F');
