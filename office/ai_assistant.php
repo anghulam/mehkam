@@ -172,7 +172,6 @@ include '../includes/office_header.php';
 </div>
 
 <script>
-const ANTHROPIC_KEY = ''; // Set via server-side proxy - DO NOT expose here
 let messages = []; // conversation history — role: 'user' | 'model'
 let isLoading = false;
 

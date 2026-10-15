@@ -25,29 +25,20 @@ $conn->query("CREATE TABLE IF NOT EXISTS ai_intake_log (
 
 const ACI_DAILY_AI_LIMIT = 20; // حماية تكلفة مفتاح المنصّة: استدعاءات ذكاء اصطناعي لكل مكتب يومياً
 
-$ai_key   = sc($conn, 'ai_api_key', '');
-$ai_model = sc($conn, 'ai_model', 'claude-sonnet-5');
-$ai_ready = $ai_key !== '';
+require_once '../includes/gemini.php';
+$ai_ready = gemini_key($conn) !== ''; // مزوّد الذكاء الاصطناعي: Gemini فقط
 $usedToday = (int)$conn->query("SELECT COUNT(*) c FROM ai_intake_log WHERE office_id=$oid AND used_ai=1 AND DATE(created_at)=CURDATE()")->fetch_assoc()['c'];
 $ai_available = $ai_ready && $usedToday < ACI_DAILY_AI_LIMIT;
 
 /** استخراج بالذكاء الاصطناعي — يعيد مصفوفة حقول أو ['error'=>..] */
-function aci_ai_extract($key, $model, $text) {
-    $prompt = "أنت مساعد قانوني سعودي. استخرج من نص صحيفة الدعوى/الحكم التالي بيانات القضية، وأعد JSON صالحاً فقط بلا أي شرح وبهذه المفاتيح بالضبط: "
+function aci_ai_extract($conn, $text) {
+    $prompt = "أنت مساعد قانوني سعودي. استخرج من نص صحيفة الدعوى/الحكم التالي بيانات القضية، وأعد JSON صالحاً فقط بلا أي شرح وبهذه المفاتيح: "
         . "case_number, court, case_type (واحد من: عمالية، تجارية، أحوال شخصية، جزائية، إدارية، عقارية، أخرى), plaintiff, defendant, "
         . "amount (رقم بالريال أو 0), session_date (YYYY-MM-DD ميلادي أو فارغ), session_time (HH:MM أو فارغ), title (عنوان مختصر للقضية), "
         . "summary (ملخص بالعربية في ٣ أسطر يتضمن الطلبات). لا تخترع معلومة غير موجودة — اترك الحقل فارغاً.\n\nالنص:\n" . $text;
-    $ch = curl_init('https://api.anthropic.com/v1/messages');
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 45,
-        CURLOPT_HTTPHEADER => ['content-type: application/json', 'x-api-key: ' . $key, 'anthropic-version: 2023-06-01'],
-        CURLOPT_POSTFIELDS => json_encode(['model' => $model, 'max_tokens' => 1200, 'messages' => [['role' => 'user', 'content' => $prompt]]], JSON_UNESCAPED_UNICODE),
-    ]);
-    $res = curl_exec($ch); $err = curl_error($ch); $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
-    if ($res === false) return ['error' => 'تعذّر الاتصال بخدمة الذكاء الاصطناعي: ' . $err];
-    $j = json_decode($res, true);
-    if ($code !== 200) return ['error' => 'رفضت الخدمة الطلب' . (isset($j['error']['message']) ? ': ' . $j['error']['message'] : '')];
-    $txt = $j['content'][0]['text'] ?? '';
+    $r = gemini_generate($conn, '', [['role' => 'user', 'content' => $prompt]], ['max_tokens' => 2048, 'temperature' => 0.2, 'json' => true, 'timeout' => 45]);
+    if (!$r['ok']) return ['error' => $r['error']];
+    $txt = $r['content'];
     if (preg_match('/\{.*\}/su', $txt, $m)) $txt = $m[0];
     $d = json_decode($txt, true);
     return is_array($d) ? $d : ['error' => 'لم تُرجع الخدمة نتيجة مفهومة'];
@@ -64,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_type'] ?? '') === 'an
         $result = $local;
         $result['title'] = '';
         if (!empty($_POST['use_ai']) && $ai_available) {
-            $ai = aci_ai_extract($ai_key, $ai_model, $raw);
+            $ai = aci_ai_extract($conn, $raw);
             if (isset($ai['error'])) { $note = $ai['error'] . ' — عُرضت نتيجة المحلل المحلي بدلاً منها.'; }
             else {
                 $usedAi = true;
