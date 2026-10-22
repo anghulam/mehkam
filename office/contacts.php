@@ -159,90 +159,103 @@ include '../includes/office_header.php';
   </div>
 </div>
 
-<!-- جدول جهات الاتصال -->
+<!-- كاردات جهات الاتصال -->
+<?php if (!$contacts): ?>
 <div class="card">
-  <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0" id="contactsTable" style="font-size:13.5px">
-      <thead class="table-light">
-        <tr>
-          <th style="width:40px">#</th>
-          <th>الاسم الكامل</th>
-          <th>رقم الجوال</th>
-          <th>البريد الإلكتروني</th>
-          <th>ملاحظات</th>
-          <th style="width:90px">تاريخ الإضافة</th>
-          <?php if (can('clients','edit') || can('clients','delete')): ?>
-          <th style="width:90px" class="text-center">إجراءات</th>
-          <?php endif; ?>
-        </tr>
-      </thead>
-      <tbody id="contactsBody">
-        <?php if (!$contacts): ?>
-        <tr id="emptyRow">
-          <td colspan="7" class="text-center text-muted py-5">
-            <i class="fas fa-address-book fa-2x mb-2 d-block opacity-25"></i>
-            لا توجد جهات اتصال بعد — أضف جهة أو استورد من Excel
-          </td>
-        </tr>
-        <?php else: ?>
-        <?php foreach ($contacts as $i => $c): ?>
-        <tr class="contact-row"
-            data-name="<?= e(mb_strtolower($c['full_name'])) ?>"
-            data-phone="<?= e($c['phone']) ?>"
-            data-email="<?= e(mb_strtolower($c['email'])) ?>">
-          <td class="text-muted"><?= $i + 1 ?></td>
-          <td class="fw-semibold"><?= e($c['full_name']) ?></td>
-          <td>
-            <?php if ($c['phone']): ?>
-              <a href="tel:<?= e($c['phone']) ?>" class="text-decoration-none text-body" dir="ltr"><?= e($c['phone']) ?></a>
-            <?php else: ?><span class="text-muted">—</span><?php endif; ?>
-          </td>
-          <td>
-            <?php if ($c['email']): ?>
-              <a href="mailto:<?= e($c['email']) ?>" class="text-decoration-none text-body" dir="ltr"><?= e($c['email']) ?></a>
-            <?php else: ?><span class="text-muted">—</span><?php endif; ?>
-          </td>
-          <td class="text-muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="<?= e($c['notes']) ?>">
-            <?= $c['notes'] ? e(mb_substr($c['notes'], 0, 50)) . (mb_strlen($c['notes']) > 50 ? '…' : '') : '—' ?>
-          </td>
-          <td class="text-muted"><?= date('Y-m-d', strtotime($c['created_at'])) ?></td>
-          <?php if (can('clients','edit') || can('clients','delete')): ?>
-          <td class="text-center">
-            <?php if (can('clients','edit')): ?>
-            <a href="contacts.php?edit=<?= $c['id'] ?>#contactModal"
-               class="btn btn-sm btn-outline-primary py-0 px-2 open-edit"
-               data-id="<?= $c['id'] ?>"
-               data-name="<?= e($c['full_name']) ?>"
-               data-phone="<?= e($c['phone']) ?>"
-               data-email="<?= e($c['email']) ?>"
-               data-notes="<?= e($c['notes']) ?>"
-               title="تعديل">
-              <i class="fas fa-pen fa-xs"></i>
-            </a>
-            <?php endif; ?>
-            <?php if (can('clients','delete')): ?>
-            <a href="contacts.php?delete=<?= $c['id'] ?>"
-               class="btn btn-sm btn-outline-danger py-0 px-2 ms-1"
-               onclick="return confirm('تأكيد حذف جهة الاتصال؟')"
-               title="حذف">
-              <i class="fas fa-trash fa-xs"></i>
-            </a>
-            <?php endif; ?>
-          </td>
-          <?php endif; ?>
-        </tr>
-        <?php endforeach; ?>
-        <?php endif; ?>
-      </tbody>
-    </table>
+  <div class="card-body text-center text-muted py-5">
+    <i class="fas fa-address-book fa-3x mb-3 d-block opacity-25"></i>
+    لا توجد جهات اتصال بعد — أضف جهة أو استورد من Excel
   </div>
-  <?php if ($contacts): ?>
-  <div class="card-footer text-muted py-2" style="font-size:12px">
-    <span id="noResultsMsg" class="text-danger d-none"><i class="fas fa-magnifying-glass me-1"></i>لا توجد نتائج مطابقة للبحث</span>
-    <span id="footerCount"><?= $total ?> جهة اتصال</span>
-  </div>
-  <?php endif; ?>
 </div>
+<?php else: ?>
+
+<div class="row g-3" id="contactsBody">
+<?php foreach ($contacts as $i => $c):
+  $initials = mb_substr($c['full_name'], 0, 1, 'UTF-8');
+  $colors   = ['#1a6eb5','#2e7d5e','#7b3fa0','#c0621f','#b5341a','#1a7eb5'];
+  $color    = $colors[$c['id'] % count($colors)];
+?>
+<div class="col-12 col-sm-6 col-lg-4 contact-row"
+     data-name="<?= e(mb_strtolower($c['full_name'])) ?>"
+     data-phone="<?= e($c['phone']) ?>"
+     data-email="<?= e(mb_strtolower($c['email'])) ?>">
+  <div class="card h-100 shadow-sm border-0" style="border-radius:14px;transition:box-shadow .2s" onmouseover="this.style.boxShadow='0 4px 18px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow=''">
+    <div class="card-body p-3">
+
+      <!-- رأس الكارد: أفاتار + اسم + أزرار -->
+      <div class="d-flex align-items-center gap-3 mb-3">
+        <!-- أفاتار -->
+        <div class="flex-shrink-0 d-flex align-items-center justify-content-center rounded-circle fw-bold text-white"
+             style="width:48px;height:48px;font-size:20px;background:<?= $color ?>">
+          <?= e($initials) ?>
+        </div>
+        <!-- الاسم + التاريخ -->
+        <div class="flex-grow-1 overflow-hidden">
+          <div class="fw-bold text-truncate" style="font-size:15px"><?= e($c['full_name']) ?></div>
+          <div class="text-muted" style="font-size:11px"><?= date('Y/m/d', strtotime($c['created_at'])) ?></div>
+        </div>
+        <!-- أزرار التعديل / الحذف -->
+        <?php if (can('clients','edit') || can('clients','delete')): ?>
+        <div class="flex-shrink-0 d-flex gap-1">
+          <?php if (can('clients','edit')): ?>
+          <button type="button"
+                  class="btn btn-sm btn-light open-edit py-1 px-2"
+                  data-id="<?= $c['id'] ?>"
+                  data-name="<?= e($c['full_name']) ?>"
+                  data-phone="<?= e($c['phone']) ?>"
+                  data-email="<?= e($c['email']) ?>"
+                  data-notes="<?= e($c['notes']) ?>"
+                  title="تعديل">
+            <i class="fas fa-pen fa-xs text-primary"></i>
+          </button>
+          <?php endif; ?>
+          <?php if (can('clients','delete')): ?>
+          <a href="contacts.php?delete=<?= $c['id'] ?>"
+             class="btn btn-sm btn-light py-1 px-2"
+             onclick="return confirm('تأكيد حذف جهة الاتصال؟')"
+             title="حذف">
+            <i class="fas fa-trash fa-xs text-danger"></i>
+          </a>
+          <?php endif; ?>
+        </div>
+        <?php endif; ?>
+      </div>
+
+      <!-- بيانات الاتصال -->
+      <div class="d-flex flex-column gap-2" style="font-size:13.5px">
+        <?php if ($c['phone']): ?>
+        <div class="d-flex align-items-center gap-2">
+          <i class="fas fa-phone fa-xs text-muted" style="width:16px;text-align:center"></i>
+          <a href="tel:<?= e($c['phone']) ?>" class="text-decoration-none text-body" dir="ltr"><?= e($c['phone']) ?></a>
+        </div>
+        <?php endif; ?>
+        <?php if ($c['email']): ?>
+        <div class="d-flex align-items-center gap-2">
+          <i class="fas fa-envelope fa-xs text-muted" style="width:16px;text-align:center"></i>
+          <a href="mailto:<?= e($c['email']) ?>" class="text-decoration-none text-body text-truncate" dir="ltr"><?= e($c['email']) ?></a>
+        </div>
+        <?php endif; ?>
+        <?php if ($c['notes']): ?>
+        <div class="d-flex align-items-start gap-2 text-muted">
+          <i class="fas fa-note-sticky fa-xs mt-1" style="width:16px;text-align:center"></i>
+          <span class="text-truncate"><?= e(mb_substr($c['notes'], 0, 60)) ?><?= mb_strlen($c['notes']) > 60 ? '…' : '' ?></span>
+        </div>
+        <?php endif; ?>
+      </div>
+
+    </div>
+  </div>
+</div>
+<?php endforeach; ?>
+</div>
+
+<!-- شريط الأسفل -->
+<div class="mt-3 text-muted d-flex align-items-center gap-3" style="font-size:12.5px">
+  <span id="noResultsMsg" class="text-danger d-none"><i class="fas fa-magnifying-glass me-1"></i>لا توجد نتائج مطابقة للبحث</span>
+  <span id="footerCount"><?= $total ?> جهة اتصال</span>
+</div>
+
+<?php endif; ?>
 
 <!-- ── مودال إضافة / تعديل ── -->
 <div class="modal fade" id="contactModal" tabindex="-1" aria-labelledby="contactModalLabel">
@@ -313,7 +326,7 @@ include '../includes/office_header.php';
 /* ── Live Search ── */
 (function () {
   const input     = document.getElementById('liveSearch');
-  const rows      = document.querySelectorAll('#contactsBody .contact-row');
+  const rows      = document.querySelectorAll('.contact-row');
   const countEl   = document.getElementById('visibleCount');
   const footerEl  = document.getElementById('footerCount');
   const noMsg     = document.getElementById('noResultsMsg');
