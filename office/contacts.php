@@ -145,9 +145,9 @@ include '../includes/office_header.php';
   <div class="card-body py-2 px-3">
     <div class="row align-items-center g-2">
       <div class="col-md-6">
-        <div class="input-group input-group-sm flex-row-reverse">
-          <span class="input-group-text rounded-start"><i class="fas fa-search"></i></span>
-          <input type="search" id="liveSearch" class="form-control rounded-end text-end" placeholder="ابحث بالاسم أو الجوال أو الإيميل…" autocomplete="off" dir="rtl">
+        <div class="position-relative">
+          <i class="fas fa-search position-absolute text-muted" style="top:50%;right:12px;transform:translateY(-50%);font-size:13px;pointer-events:none"></i>
+          <input type="search" id="liveSearch" class="form-control form-control-sm pe-4" placeholder="ابحث بالاسم أو الجوال أو الإيميل…" autocomplete="off" dir="rtl" style="padding-right:34px;border-radius:8px">
         </div>
       </div>
       <div class="col-md-6 text-md-end">
@@ -161,11 +161,10 @@ include '../includes/office_header.php';
 
 <!-- كاردات جهات الاتصال -->
 <?php if (!$contacts): ?>
-<div class="card">
-  <div class="card-body text-center text-muted py-5">
-    <i class="fas fa-address-book fa-3x mb-3 d-block opacity-25"></i>
-    لا توجد جهات اتصال بعد — أضف جهة أو استورد من Excel
-  </div>
+<div class="text-center text-muted py-5">
+  <i class="fas fa-address-book fa-3x mb-3 d-block" style="color:#ccc"></i>
+  <div style="font-size:15px">لا توجد جهات اتصال بعد</div>
+  <div style="font-size:13px;margin-top:6px">أضف جهة من زر «إضافة جهة» أو استورد من Excel</div>
 </div>
 <?php else: ?>
 
