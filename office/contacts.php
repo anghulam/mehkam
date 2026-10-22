@@ -146,8 +146,8 @@ include '../includes/office_header.php';
     <div class="row align-items-center g-2">
       <div class="col-md-6">
         <div class="position-relative">
-          <i class="fas fa-search position-absolute text-muted" style="top:50%;right:12px;transform:translateY(-50%);font-size:13px;pointer-events:none"></i>
-          <input type="search" id="liveSearch" class="form-control form-control-sm pe-4" placeholder="ابحث بالاسم أو الجوال أو الإيميل…" autocomplete="off" dir="rtl" style="padding-right:34px;border-radius:8px">
+          <i class="fas fa-search position-absolute text-muted" style="top:50%;left:12px;transform:translateY(-50%);font-size:13px;pointer-events:none"></i>
+          <input type="search" id="liveSearch" class="form-control form-control-sm" placeholder="ابحث بالاسم أو الجوال أو الإيميل…" autocomplete="off" dir="rtl" style="padding-left:36px;border-radius:8px">
         </div>
       </div>
       <div class="col-md-6 text-md-end">
