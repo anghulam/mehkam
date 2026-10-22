@@ -145,9 +145,9 @@ include '../includes/office_header.php';
   <div class="card-body py-2 px-3">
     <div class="row align-items-center g-2">
       <div class="col-md-6">
-        <div class="input-group input-group-sm">
-          <span class="input-group-text"><i class="fas fa-search"></i></span>
-          <input type="search" id="liveSearch" class="form-control" placeholder="ابحث بالاسم أو الجوال أو الإيميل…" autocomplete="off" dir="auto">
+        <div class="input-group input-group-sm flex-row-reverse">
+          <span class="input-group-text rounded-start"><i class="fas fa-search"></i></span>
+          <input type="search" id="liveSearch" class="form-control rounded-end text-end" placeholder="ابحث بالاسم أو الجوال أو الإيميل…" autocomplete="off" dir="rtl">
         </div>
       </div>
       <div class="col-md-6 text-md-end">
