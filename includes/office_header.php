@@ -208,6 +208,7 @@ body.sidebar-collapsed .mk-sb-bottom { padding: 10px 6px; }
       <div class="mk-sb-group">القضايا والعملاء</div>
       <?php sidebarItem('clients.php',      'address-book', 'ملفات العملاء',   $p==='clients.php', !can('clients','view')); ?>
       <?php sidebarItem('contacts.php',     'address-card', 'دليل الاتصال',    $p==='contacts.php', !can('clients','view')); ?>
+      <?php sidebarItem('wa_broadcast.php', 'paper-plane',  'بث واتساب',       $p==='wa_broadcast.php', !can('clients','view')); ?>
       <?php sidebarItem('cases.php',        'gavel',        'القضايا والجلسات',$p==='cases.php', !can('cases','view')); ?>
       <?php sidebarItem('precedents.php',   'scale-balanced','السوابق القضائية',$p==='precedents.php', !$_can_precedents || !can('precedents','view')); ?>
 
