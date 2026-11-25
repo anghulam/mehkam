@@ -8,6 +8,22 @@ $oid = (int)$_SESSION['office_id'];
 $uid = (int)($_SESSION['user_id'] ?? 0);
 $page_title = 'بث واتساب — دليل الاتصال';
 
+/* ── إعدادات واتساب الخاصة بالمكتب ── */
+$conn->query("CREATE TABLE IF NOT EXISTS office_wa_settings (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    office_id  INT NOT NULL UNIQUE,
+    provider   ENUM('greenapi','ultramsg','meta') NOT NULL DEFAULT 'greenapi',
+    instance   VARCHAR(200) DEFAULT NULL,
+    token      VARCHAR(500) DEFAULT NULL,
+    extra      VARCHAR(500) DEFAULT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+$wa_cfg = ['provider'=>'','instance'=>'','token'=>'','extra'=>''];
+$wr = $conn->query("SELECT provider,instance,token,extra FROM office_wa_settings WHERE office_id=$oid");
+if ($wr && $wrow = $wr->fetch_assoc()) $wa_cfg = $wrow;
+$wa_ready = ($wa_cfg['instance'] !== '' && $wa_cfg['token'] !== '');
+
 /* ── جدول سجل الإرسال ── */
 $conn->query("CREATE TABLE IF NOT EXISTS wa_broadcast_log (
     id          INT AUTO_INCREMENT PRIMARY KEY,
@@ -39,12 +55,41 @@ if (isset($_GET['ajax_send']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     /* استبدال {الاسم} بالاسم الفعلي */
     $msg = str_replace('{الاسم}', $name ?: 'عزيزي العميل', $tpl);
 
-    if (!wa_configured($conn)) {
-        echo json_encode(['ok'=>false,'msg'=>'واتساب غير مهيَّأ — راجع إعدادات المنصة']);
+    /* قراءة إعدادات المكتب */
+    $wr2 = $conn->query("SELECT provider,instance,token FROM office_wa_settings WHERE office_id=$oid");
+    $wcfg = ($wr2 && $wrow2=$wr2->fetch_assoc()) ? $wrow2 : [];
+    if (empty($wcfg['instance']) || empty($wcfg['token'])) {
+        echo json_encode(['ok'=>false,'msg'=>'واتساب غير مهيَّأ — اضبط الإعدادات أولاً']);
         exit;
     }
 
-    $res = wa_send($conn, $phone, $msg);
+    $to_normalized = wa_normalize_phone($phone);
+    $prov = $wcfg['provider'];
+    $inst = $wcfg['instance'];
+    $tok  = $wcfg['token'];
+
+    if ($prov === 'greenapi') {
+        $base = 'https://api.green-api.com';
+        $r = wa_http('POST', "{$base}/waInstance{$inst}/sendMessage/{$tok}",
+            ['Content-Type: application/json'],
+            ['chatId' => $to_normalized . '@c.us', 'message' => $msg]);
+        $ok_send = $r['ok'] && is_array($r['data']) && !empty($r['data']['idMessage']);
+        $res = ['ok' => $ok_send, 'msg' => $ok_send ? 'أُرسلت' : ('فشل: ' . json_encode($r['data'] ?? $r['error'], JSON_UNESCAPED_UNICODE))];
+    } elseif ($prov === 'ultramsg') {
+        $r = wa_http('POST', "https://api.ultramsg.com/{$inst}/messages/chat",
+            ['Content-Type: application/x-www-form-urlencoded'],
+            http_build_query(['token'=>$tok,'to'=>$to_normalized,'body'=>$msg]), false);
+        $ok_send = $r['ok'] && is_array($r['data']) && (($r['data']['sent']??'') === 'true' || ($r['data']['sent']??false) === true);
+        $res = ['ok'=>$ok_send,'msg'=>$ok_send?'أُرسلت':('فشل: '.($r['data']['error']??json_encode($r['data'],JSON_UNESCAPED_UNICODE)))];
+    } elseif ($prov === 'meta') {
+        $r = wa_http('POST', "https://graph.facebook.com/v21.0/{$inst}/messages",
+            ['Authorization: Bearer '.$tok,'Content-Type: application/json'],
+            ['messaging_product'=>'whatsapp','recipient_type'=>'individual','to'=>$to_normalized,'type'=>'text','text'=>['preview_url'=>false,'body'=>$msg]]);
+        $ok_send = $r['ok'] && is_array($r['data']) && !empty($r['data']['messages']);
+        $res = ['ok'=>$ok_send,'msg'=>$ok_send?'أُرسلت':('فشل: '.($r['data']['error']['message']??json_encode($r['data'],JSON_UNESCAPED_UNICODE)))];
+    } else {
+        $res = ['ok'=>false,'msg'=>'مزوّد غير معروف'];
+    }
 
     $ne = $conn->real_escape_string($name);
     $pe = $conn->real_escape_string($phone);
@@ -78,10 +123,14 @@ include '../includes/office_header.php';
   <a href="contacts.php" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-right me-1"></i>دليل الاتصال</a>
 </div>
 
-<?php if (!wa_configured($conn)): ?>
+<?php if (!$wa_ready): ?>
 <div class="alert alert-warning d-flex gap-2 align-items-start">
-  <i class="fas fa-triangle-exclamation mt-1"></i>
-  <div>واتساب غير مهيَّأ بعد. اطلب من مدير المنصة ضبط إعدادات WhatsApp من لوحة الإدارة.</div>
+  <i class="fas fa-triangle-exclamation mt-1 flex-shrink-0"></i>
+  <div>
+    واتساب غير مهيَّأ بعد.
+    <a href="wa_settings.php" class="alert-link fw-bold">اضبط إعدادات واتساب الآن</a>
+    واربط رقم جوالك أو رقم المكتب.
+  </div>
 </div>
 <?php endif; ?>
 
